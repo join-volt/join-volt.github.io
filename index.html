@@ -378,6 +378,7 @@
         <div><div class="stat-val" id="profileStreak">0</div><div class="stat-label">Day Streak</div></div>
       </div>
       <button class="danger-btn" onclick="signOut()">Sign out</button>
+      <button class="secondary-btn" onclick="initOnboarding()" style="margin-top:0">View rules</button>
     </div>
   </div>
 </div>
@@ -532,18 +533,6 @@ function getStateKey() {
 //  BOOT
 // ═══════════════════════════════════════
 async function boot() {
-  // Show onboarding if first time
-  if (!localStorage.getItem('ob_done')) {
-    initOnboarding();
-    // Wait for onboarding to finish before continuing boot
-    await new Promise(resolve => {
-      const orig = window.finishOnboarding;
-      window.finishOnboarding = function() {
-        orig();
-        resolve();
-      };
-    });
-  }
   // Try to restore session from localStorage
   const storedAccess = localStorage.getItem('sb_access');
   const storedUser   = localStorage.getItem('sb_user');
@@ -583,6 +572,10 @@ function showApp() {
   showScreen('appScreen');
   render();
   buildGoals();
+  // Show onboarding after login if first time
+  if (!localStorage.getItem('ob_done')) {
+    initOnboarding();
+  }
 }
 
 // ═══════════════════════════════════════
