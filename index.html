@@ -119,9 +119,169 @@
   #loadingScreen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;}
   .spinner{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--ember);border-radius:50%;animation:spin 0.8s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ── onboarding ── */
+  #onboardingScreen {
+    position:fixed;inset:0;background:var(--bg);z-index:10000;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:40px 28px;
+  }
+  .ob-skip {
+    position:absolute;top:20px;right:24px;
+    background:none;border:none;color:var(--ash);
+    font-family:'Space Mono',monospace;font-size:11px;
+    cursor:pointer;letter-spacing:0.08em;
+  }
+  .ob-slides {
+    width:100%;max-width:400px;overflow:hidden;position:relative;
+    flex:1;display:flex;align-items:center;
+  }
+  .ob-slide {
+    min-width:100%;padding:0 4px;
+    transition:transform 0.45s cubic-bezier(.4,0,.2,1),opacity 0.45s ease;
+    position:absolute;top:0;left:0;right:0;
+    display:flex;flex-direction:column;justify-content:center;
+    opacity:0;transform:translateX(60px);pointer-events:none;
+  }
+  .ob-slide.active {
+    opacity:1;transform:translateX(0);pointer-events:auto;position:relative;
+  }
+  .ob-slide.exit-left {
+    opacity:0;transform:translateX(-60px);
+  }
+  .ob-icon {
+    font-size:52px;margin-bottom:24px;text-align:center;line-height:1;
+  }
+  .ob-title {
+    font-family:'Fraunces',serif;font-weight:900;font-size:28px;
+    line-height:1.15;margin-bottom:16px;
+  }
+  .ob-body {
+    font-size:13px;color:var(--ash);line-height:1.75;
+  }
+  .ob-body strong { color:var(--text); }
+  .ob-body .drain-table {
+    margin-top:14px;border-left:2px solid var(--line);padding-left:14px;
+  }
+  .ob-body .drain-table div {
+    margin-bottom:6px;font-size:12px;
+  }
+  .ob-body .drain-table span {
+    color:var(--ember);font-weight:700;
+  }
+  .ob-footer {
+    width:100%;max-width:400px;padding-top:32px;
+  }
+  .ob-dots {
+    display:flex;justify-content:center;gap:8px;margin-bottom:24px;
+  }
+  .ob-dot {
+    width:6px;height:6px;border-radius:50%;
+    background:var(--line);transition:background 0.3s ease,width 0.3s ease;
+  }
+  .ob-dot.active {
+    background:var(--ember);width:18px;border-radius:4px;
+  }
+  .ob-next {
+    width:100%;background:var(--ember);color:#0c0a07;border:none;
+    border-radius:12px;padding:15px;font-family:'Space Mono',monospace;
+    font-size:13px;font-weight:700;cursor:pointer;letter-spacing:0.08em;
+    transition:opacity 0.2s;
+  }
+  .ob-next:active { opacity:0.8; }
 </style>
 </head>
 <body>
+<div id="onboardingScreen" style="display:none">
+  <button class="ob-skip" onclick="finishOnboarding()">Skip</button>
+  <div class="ob-slides">
+
+    <div class="ob-slide active" id="ob0">
+      <div class="ob-icon">⚡</div>
+      <div class="ob-title">Welcome to Momentum</div>
+      <div class="ob-body">
+        Momentum is built on one idea: <strong>consistency compounds.</strong><br><br>
+        Every day you show up, your score grows. Every day you don't, it decays. The longer you stay away, the faster it drops.<br><br>
+        This isn't a habit tracker. It's a physics simulation of your discipline.
+      </div>
+    </div>
+
+    <div class="ob-slide" id="ob1">
+      <div class="ob-icon">🎯</div>
+      <div class="ob-title">How your score is calculated</div>
+      <div class="ob-body">
+        Set at least <strong>3 goals</strong> each day. Your momentum gain is based on the ratio of goals you complete.<br><br>
+        <strong>Complete all goals → +100 momentum</strong><br>
+        Complete half → +50 momentum<br>
+        Complete none → 0 momentum gained<br><br>
+        It doesn't matter if you set 3 goals or 10. A perfect day is always <strong>+100</strong>.
+      </div>
+    </div>
+
+    <div class="ob-slide" id="ob2">
+      <div class="ob-icon">🔥</div>
+      <div class="ob-title">Your streak</div>
+      <div class="ob-body">
+        Your <strong>day streak</strong> counts how many days in a row you've shown up and completed at least one goal.<br><br>
+        End the day with goals completed → streak grows by 1.<br><br>
+        Miss a day → see what happens on the next slide.
+      </div>
+    </div>
+
+    <div class="ob-slide" id="ob3">
+      <div class="ob-icon">⚠️</div>
+      <div class="ob-title">Miss a day — Recovery Mode</div>
+      <div class="ob-body">
+        Miss <strong>one day</strong> and you enter Recovery Mode.<br><br>
+        Your streak is <strong>frozen</strong> — it won't grow, but it won't reset either. Your momentum is safe.<br><br>
+        You have <strong>one day</strong> to come back and complete your goals. Do that and everything continues as normal.
+      </div>
+    </div>
+
+    <div class="ob-slide" id="ob4">
+      <div class="ob-icon">📉</div>
+      <div class="ob-title">Miss two days — it gets costly</div>
+      <div class="ob-body">
+        Miss a second day in a row and Recovery Mode expires. Your streak resets to 0 and momentum starts draining:
+        <div class="drain-table">
+          <div>Day 2 missed: <span>−10</span></div>
+          <div>Day 3 missed: <span>−20</span></div>
+          <div>Day 4 missed: <span>−35</span></div>
+          <div>Day 5 missed: <span>−55</span></div>
+          <div>Day 6 missed: <span>−80</span></div>
+        </div><br>
+        The damage <strong>compounds</strong>. Coming back after a week is much harder than coming back after two days.
+      </div>
+    </div>
+
+    <div class="ob-slide" id="ob5">
+      <div class="ob-icon">🏆</div>
+      <div class="ob-title">Clans &amp; leaderboard</div>
+      <div class="ob-body">
+        Create a clan or join one with an <strong>invite code</strong>. Compete with friends and family on a shared leaderboard.<br><br>
+        Your goals stay <strong>completely private</strong>. Only your momentum score and streak are visible to your clan.<br><br>
+        Nudge clan members when they go quiet. Let them know you noticed.
+      </div>
+    </div>
+
+    <div class="ob-slide" id="ob6">
+      <div class="ob-icon">💡</div>
+      <div class="ob-title">One last thing</div>
+      <div class="ob-body">
+        Momentum isn't about being perfect.<br><br>
+        <strong>One bad day doesn't break you. Two does.</strong><br><br>
+        The app is designed to make coming back easy and staying away costly. Every day you open it is a day your momentum survives.<br><br>
+        Now go build something.
+      </div>
+    </div>
+
+  </div>
+  <div class="ob-footer">
+    <div class="ob-dots" id="obDots"></div>
+    <button class="ob-next" id="obNextBtn" onclick="obNext()">Next →</button>
+  </div>
+</div>
+
 <div id="loadingScreen"><div class="spinner"></div></div>
 <div class="glow" id="glow"></div>
 
@@ -372,6 +532,18 @@ function getStateKey() {
 //  BOOT
 // ═══════════════════════════════════════
 async function boot() {
+  // Show onboarding if first time
+  if (!localStorage.getItem('ob_done')) {
+    initOnboarding();
+    // Wait for onboarding to finish before continuing boot
+    await new Promise(resolve => {
+      const orig = window.finishOnboarding;
+      window.finishOnboarding = function() {
+        orig();
+        resolve();
+      };
+    });
+  }
   // Try to restore session from localStorage
   const storedAccess = localStorage.getItem('sb_access');
   const storedUser   = localStorage.getItem('sb_user');
@@ -468,6 +640,19 @@ async function signOut() {
 }
 
 // ═══════════════════════════════════════
+//  DRAIN FORMULA
+// ═══════════════════════════════════════
+// missStreak 1 = recovery mode (no drain, streak frozen)
+// missStreak 2+ = draining. Sequence: 10, 20, 35, 55, 80, 110...
+// Gaps grow: +10, +15, +20, +25, +30... (each gap +5 more than last)
+function calcDrain(ms) {
+  if (ms <= 1) return 0;
+  let drain = 0, gap = 10, inc = 5;
+  for (let d = 2; d <= ms; d++) { drain += gap; gap += inc; inc += 5; }
+  return drain;
+}
+
+// ═══════════════════════════════════════
 //  OFFLINE DRAIN
 // ═══════════════════════════════════════
 function dateStr(d = new Date()) { return d.toISOString().slice(0,10); }
@@ -477,8 +662,16 @@ function applyOfflineDrain() {
   if (!stored || stored === dateStr()) return;
   const days = Math.round((new Date(dateStr()) - new Date(stored)) / 86400000);
   for (let d = 0; d < days; d++) {
-    if (velocity > 0) { mass++; missStreak=0; velocity=0; }
-    else { missStreak++; momentum=Math.max(0,momentum-2*missStreak); mass=0; }
+    if (velocity > 0) {
+      mass++; missStreak = 0; velocity = 0;
+    } else {
+      missStreak++;
+      if (missStreak >= 2) {
+        momentum = Math.max(0, momentum - calcDrain(missStreak));
+        mass = 0;
+      }
+      // missStreak === 1: recovery mode, no drain, streak frozen
+    }
   }
   localStorage.setItem('today_date', dateStr());
   saveProfile();
@@ -491,7 +684,7 @@ function render() {
   const key = getStateKey();
   const st  = STATES[key];
   $('momentum').textContent   = Math.round(momentum*10)/10;
-  $('massDisplay').textContent = mass;
+  $('massDisplay').textContent = missStreak === 1 ? mass + '⚠' : mass;
   $('state').textContent = st.label;
   $('state').style.color = st.color;
   $('glow').style.opacity = st.glowOp;
@@ -503,15 +696,24 @@ function render() {
   const dateEl = $('todayDate');
   if (dateEl) dateEl.textContent = `${days[now.getDay()]} ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
 
-  // drain line — hide entirely when momentum is 0
+  // drain line — shows recovery mode or drain warning
   const dl = $('drainLine');
   if (momentum <= 0) {
     dl.classList.remove('visible');
-  } else if (missStreak > 0) {
-    dl.textContent = `momentum draining — missing another day costs ${2*(missStreak+1)} pts`;
+  } else if (missStreak === 1) {
+    // recovery mode — 1 missed day, still safe
+    dl.textContent = 'Recovery mode — complete your goals today to protect your streak';
+    dl.style.color = '#ffae5c';
     dl.classList.add('visible');
-  } else if (velocity===0 && momentum>0) {
+  } else if (missStreak >= 2) {
+    // draining
+    const nextDrain = calcDrain(missStreak + 1) - calcDrain(missStreak);
+    dl.textContent = `momentum draining — missing another day costs ${nextDrain} pts`;
+    dl.style.color = '#7aa0c0';
+    dl.classList.add('visible');
+  } else if (velocity === 0 && momentum > 0) {
     dl.textContent = 'complete a goal to protect your momentum';
+    dl.style.color = '#7aa0c0';
     dl.classList.add('visible');
   } else { dl.classList.remove('visible'); }
 
@@ -734,12 +936,32 @@ async function endDay() {
     setTimeout(()=>{btn.textContent=orig;btn.style.borderColor='';btn.style.color='';},2500);
     return;
   }
-  const did=velocity>0;
-  if(did){mass++;missStreak=0;}
-  else{missStreak++;const drain=2*missStreak;const prev=momentum;momentum=Math.max(0,Math.round((momentum-drain)*10)/10);mass=0;if(prev>momentum){const mr=$('momentum').getBoundingClientRect();fly('-'+drain,mr.left+mr.width/2,mr.top+10,'drain');}}
-  velocity=0;GOALS.forEach(g=>g.done=false);
-  localStorage.setItem('today_date',dateStr());
-  buildGoals();render();
+  const did = velocity > 0;
+  if (did) {
+    // completed goals — streak resumes, recovery cleared
+    mass++;
+    missStreak = 0;
+  } else {
+    missStreak++;
+    if (missStreak === 1) {
+      // first miss — recovery mode, no drain, streak frozen
+      // mass stays the same (frozen, not incremented)
+    } else {
+      // recovery window expired — drain kicks in, streak resets
+      const drain = calcDrain(missStreak);
+      const prev = momentum;
+      momentum = Math.max(0, Math.round((momentum - drain) * 10) / 10);
+      mass = 0;
+      if (prev > momentum) {
+        const mr = $('momentum').getBoundingClientRect();
+        fly('-' + drain, mr.left + mr.width / 2, mr.top + 10, 'drain');
+      }
+    }
+  }
+  velocity = 0;
+  GOALS.forEach(g => g.done = false);
+  localStorage.setItem('today_date', dateStr());
+  buildGoals(); render();
   await saveGoalsDone();
   await saveProfile();
 }
@@ -912,6 +1134,53 @@ async function checkNudgesOnLoad() {
       clanNav.querySelector('.nav-icon').appendChild(dot);
     }
   }
+}
+
+// ═══════════════════════════════════════
+//  ONBOARDING
+// ═══════════════════════════════════════
+const OB_TOTAL = 7;
+let obCurrent = 0;
+
+function initOnboarding() {
+  // Build dots
+  const dots = $('obDots');
+  dots.innerHTML = '';
+  for (let i = 0; i < OB_TOTAL; i++) {
+    const d = document.createElement('div');
+    d.className = 'ob-dot' + (i === 0 ? ' active' : '');
+    d.id = 'obDot' + i;
+    dots.appendChild(d);
+  }
+  $('onboardingScreen').style.display = 'flex';
+}
+
+function obNext() {
+  if (obCurrent === OB_TOTAL - 1) { finishOnboarding(); return; }
+  const current = $('ob' + obCurrent);
+  const next = $('ob' + (obCurrent + 1));
+  // exit current
+  current.classList.remove('active');
+  current.classList.add('exit-left');
+  // enter next
+  next.style.transform = 'translateX(60px)';
+  next.style.opacity = '0';
+  next.classList.add('active');
+  // force reflow
+  next.getBoundingClientRect();
+  next.style.transform = '';
+  next.style.opacity = '';
+  setTimeout(() => { current.classList.remove('exit-left'); }, 450);
+  obCurrent++;
+  // update dots
+  document.querySelectorAll('.ob-dot').forEach((d,i) => d.classList.toggle('active', i === obCurrent));
+  // update button
+  $('obNextBtn').textContent = obCurrent === OB_TOTAL - 1 ? "Let's go →" : 'Next →';
+}
+
+function finishOnboarding() {
+  localStorage.setItem('ob_done', '1');
+  $('onboardingScreen').style.display = 'none';
 }
 
 // Boot
