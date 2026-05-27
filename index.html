@@ -314,6 +314,18 @@
   </div>
 </div>
 
+<!-- RESET PASSWORD -->
+<div class="screen" id="resetPasswordScreen">
+  <div style="margin-top:60px">
+    <div style="font-family:'Fraunces',serif;font-weight:900;font-size:36px;margin-bottom:8px">New password</div>
+    <div style="font-size:12px;color:var(--ash);margin-bottom:32px;line-height:1.6">Choose a new password for your account.</div>
+    <div class="field"><label>New password</label><input type="password" id="newPasswordInput" placeholder="••••••••" minlength="6"></div>
+    <div class="field"><label>Confirm password</label><input type="password" id="confirmPasswordInput" placeholder="••••••••"></div>
+    <button class="primary-btn" onclick="submitNewPassword()">Set new password</button>
+    <div class="err" id="resetPasswordErr"></div>
+  </div>
+</div>
+
 <!-- USERNAME SETUP -->
 <div class="screen" id="setupScreen">
   <div style="margin-top:60px">
@@ -546,6 +558,8 @@ function getStateKey() {
 //  BOOT
 // ═══════════════════════════════════════
 async function boot() {
+  // Check if this is a password reset redirect
+  if (checkResetToken()) return;
   // Try to restore session from localStorage
   const storedAccess = localStorage.getItem('sb_access');
   const storedUser   = localStorage.getItem('sb_user');
@@ -641,6 +655,48 @@ async function saveUsername() {
   profile = { id: currentUser.id, username, momentum:0, streak:0 };
   await loadGoals();
   showApp();
+}
+
+// ═══════════════════════════════════════
+//  PASSWORD RESET HANDLER
+// ═══════════════════════════════════════
+function checkResetToken() {
+  // Supabase puts the token in the URL hash
+  const hash = window.location.hash;
+  if (!hash) return false;
+  const params = new URLSearchParams(hash.substring(1));
+  const type = params.get('type');
+  const token = params.get('access_token');
+  if (type === 'recovery' && token) {
+    // Store token for use when submitting
+    accessToken = token;
+    showScreen('resetPasswordScreen');
+    // Clean the URL
+    history.replaceState(null, '', window.location.pathname);
+    return true;
+  }
+  return false;
+}
+
+async function submitNewPassword() {
+  const pass = $('newPasswordInput').value;
+  const confirm = $('confirmPasswordInput').value;
+  if (!pass || pass.length < 6) { $('resetPasswordErr').textContent = 'Password must be at least 6 characters'; return; }
+  if (pass !== confirm) { $('resetPasswordErr').textContent = 'Passwords do not match'; return; }
+  $('resetPasswordErr').textContent = '';
+  const res = await fetch(`${SUPA_URL}/auth/v1/user`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + accessToken },
+    body: JSON.stringify({ password: pass })
+  });
+  if (res.ok) {
+    $('resetPasswordErr').style.color = 'var(--done)';
+    $('resetPasswordErr').textContent = 'Password updated — you can now log in';
+    setTimeout(() => { showScreen('authScreen'); }, 2000);
+  } else {
+    $('resetPasswordErr').style.color = '#ff6b6b';
+    $('resetPasswordErr').textContent = 'Failed to update password. Try resetting again.';
+  }
 }
 
 function showReset() {
