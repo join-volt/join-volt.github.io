@@ -661,17 +661,18 @@ async function saveUsername() {
 //  PASSWORD RESET HANDLER
 // ═══════════════════════════════════════
 function checkResetToken() {
-  // Supabase puts the token in the URL hash
   const hash = window.location.hash;
   if (!hash) return false;
   const params = new URLSearchParams(hash.substring(1));
   const type = params.get('type');
-  const token = params.get('access_token');
+  // Try both access_token (full flow) and token (our custom template)
+  const token = params.get('access_token') || params.get('token');
   if (type === 'recovery' && token) {
-    // Store token for use when submitting
     accessToken = token;
+    // Also store refresh token if present
+    const rt = params.get('refresh_token');
+    if (rt) refreshToken = rt;
     showScreen('resetPasswordScreen');
-    // Clean the URL
     history.replaceState(null, '', window.location.pathname);
     return true;
   }
@@ -692,10 +693,12 @@ async function submitNewPassword() {
   if (res.ok) {
     $('resetPasswordErr').style.color = 'var(--done)';
     $('resetPasswordErr').textContent = 'Password updated — you can now log in';
+    localStorage.clear();
     setTimeout(() => { showScreen('authScreen'); }, 2000);
   } else {
+    const err = await res.json().catch(() => ({}));
     $('resetPasswordErr').style.color = '#ff6b6b';
-    $('resetPasswordErr').textContent = 'Failed to update password. Try resetting again.';
+    $('resetPasswordErr').textContent = err.message || 'Link expired — request a new reset email';
   }
 }
 
