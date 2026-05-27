@@ -396,6 +396,8 @@ async function boot() {
   await loadClan();
   applyOfflineDrain();
   showApp();
+  // Check for nudges on load
+  checkNudgesOnLoad();
 }
 
 function showScreen(id) {
@@ -724,6 +726,28 @@ async function loadClan() {
   currentClan = data&&data[0]&&data[0].clans ? data[0].clans : null;
 }
 
+async function sendNudge(toUserId) {
+  const {error} = await dbInsert('nudges',{
+    from_user_id: currentUser.id,
+    to_user_id: toUserId,
+    clan_id: currentClan.id,
+    seen: false
+  });
+  if (error) { alert('Could not send nudge'); return; }
+  // visual feedback
+  const btn = document.querySelector(`[data-nudge="${toUserId}"]`);
+  if (btn) { btn.textContent = 'Sent'; btn.disabled = true; btn.style.opacity = '0.5'; }
+}
+
+async function loadNudges() {
+  const {data} = await dbSelect('nudges', `to_user_id=eq.${currentUser.id}&seen=eq.false`, 'id,from_user_id,created_at,profiles!nudges_from_user_id_fkey(username)');
+  return data || [];
+}
+
+async function markNudgesSeen() {
+  await dbUpdate('nudges', `to_user_id=eq.${currentUser.id}&seen=eq.false`, {seen: true});
+}
+
 async function loadLeaderboard() {
   await loadClan();
   const noClan=$('noClanMsg'),clanAct=$('clanActions'),clanMgmt=$('clanMgmt');
@@ -739,15 +763,36 @@ async function loadLeaderboard() {
   const ids=members.map(m=>m.user_id).join(',');
   const {data:profiles}=await dbSelect('profiles',`id=in.(${ids})&order=momentum.desc`,'id,username,momentum,streak');
   if(!profiles)return;
+
+  // load unseen nudges for current user
+  const nudges = await loadNudges();
+  if (nudges.length > 0) {
+    // show nudge notification at top
+    const nudgeNames = nudges.map(n => n.profiles?.username || 'Someone').join(', ');
+    let nudgeBar = $('nudgeBar');
+    if (!nudgeBar) {
+      nudgeBar = document.createElement('div');
+      nudgeBar.id = 'nudgeBar';
+      nudgeBar.style.cssText = 'background:var(--surface-lit);border:1px solid var(--ember);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--ember-soft);display:flex;align-items:center;justify-content:space-between;gap:12px;';
+      $('leaderboardList').before(nudgeBar);
+    }
+    nudgeBar.innerHTML = `<span>${nudgeNames} nudged you — get back on track</span><button onclick="markNudgesSeen();this.parentElement.remove();" style="background:none;border:none;color:var(--ash);cursor:pointer;font-size:18px;flex-shrink:0;">×</button>`;
+    await markNudgesSeen();
+  }
+
   const list=$('leaderboardList');list.innerHTML='';
   profiles.forEach((p,i)=>{
     const isYou=p.id===currentUser.id;
     const row=document.createElement('div');
     row.className='lb-row'+(isYou?' lb-you':'');
     const rankClass=i===0?'gold':i===1?'silver':i===2?'bronze':'';
+    const nudgeBtn = !isYou
+      ? `<button data-nudge="${p.id}" onclick="sendNudge('${p.id}')" style="background:transparent;border:1px solid var(--line);color:var(--ash);font-family:'Space Mono',monospace;font-size:10px;padding:5px 10px;border-radius:8px;cursor:pointer;flex-shrink:0;letter-spacing:0.05em;">Nudge</button>`
+      : '';
     row.innerHTML=`<div class="lb-rank ${rankClass}">${i+1}</div>
       <div class="lb-username">${esc(p.username)}${isYou?' <span style="font-size:10px;color:var(--ash)">(you)</span>':''}</div>
-      <div class="lb-stats"><div class="lb-momentum">${Math.round(p.momentum*10)/10}</div><div class="lb-streak">${p.streak} day streak</div></div>`;
+      <div class="lb-stats"><div class="lb-momentum">${Math.round(p.momentum*10)/10}</div><div class="lb-streak">${p.streak} day streak</div></div>
+      ${nudgeBtn}`;
     list.appendChild(row);
   });
 }
@@ -824,6 +869,22 @@ $('addSave').addEventListener('click',()=>{addGoal($('addInput').value);closeAdd
 $('addInput').addEventListener('keydown',e=>{if(e.key==='Enter'){addGoal($('addInput').value);closeAdd();}});
 $('dayBtn').addEventListener('click',endDay);
 $('authPassword').addEventListener('keydown',e=>{if(e.key==='Enter')handleAuth();});
+
+async function checkNudgesOnLoad() {
+  if (!currentUser) return;
+  const nudges = await loadNudges();
+  if (nudges.length > 0) {
+    // Show a dot on the clan tab
+    const clanNav = $('navLeaderboard');
+    let dot = clanNav.querySelector('.nudge-dot');
+    if (!dot) {
+      dot = document.createElement('span');
+      dot.className = 'nudge-dot';
+      dot.style.cssText = 'width:8px;height:8px;background:var(--ember);border-radius:50%;display:inline-block;margin-left:4px;vertical-align:middle;';
+      clanNav.querySelector('.nav-icon').appendChild(dot);
+    }
+  }
+}
 
 // Boot
 boot();
