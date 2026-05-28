@@ -122,6 +122,12 @@
   .stat-box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:20px;display:flex;justify-content:space-around;}
   .stat-val{font-family:'Sora',sans-serif;font-weight:700;font-size:32px;color:var(--ember);text-align:center;}
   .stat-label{font-size:9px;color:var(--ash);letter-spacing:0.15em;text-transform:uppercase;margin-top:4px;text-align:center;}
+  /* tab transitions */
+  .tab-content { animation: tabFadeIn 0.22s ease; }
+  @keyframes tabFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
   /* loading */
   #loadingScreen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;}
   .spinner{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--ember);border-radius:50%;animation:spin 0.8s linear infinite;}
@@ -373,7 +379,7 @@
   </nav>
 
   <!-- TODAY TAB -->
-  <div id="tabMomentum">
+  <div id="tabMomentum" class="tab-content">
     <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;margin-top:4px">
       <svg width="22" height="22" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -413,7 +419,7 @@
   </div>
 
   <!-- CLAN TAB -->
-  <div id="tabLeaderboard" style="display:none">
+  <div id="tabLeaderboard" class="tab-content" style="display:none">
     <div class="lb-title">Clan</div>
     <div class="clan-badge" id="clanName">No clan yet</div>
     <div id="leaderboardList"></div>
@@ -436,7 +442,7 @@
   </div>
 
   <!-- PROFILE TAB -->
-  <div id="tabProfile" style="display:none">
+  <div id="tabProfile" class="tab-content" style="display:none">
     <div style="margin-top:20px">
       <div class="profile-avatar" id="profileAvatar">?</div>
       <div class="profile-username" id="profileUsername">—</div>
@@ -1349,7 +1355,12 @@ function showTab(tab) {
     $('tab'+t).style.display='none';
     $('nav'+t).classList.remove('active');
   });
-  $('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).style.display='block';
+  const el = $('tab'+tab.charAt(0).toUpperCase()+tab.slice(1));
+  el.style.display='block';
+  // re-trigger animation
+  el.classList.remove('tab-content');
+  void el.offsetWidth;
+  el.classList.add('tab-content');
   $('nav'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.add('active');
   if(tab==='leaderboard')loadLeaderboard();
   if(tab==='profile')loadProfile();
