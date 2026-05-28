@@ -294,8 +294,12 @@
       <button class="auth-tab active" id="tabLogin" onclick="switchTab('login')">Log in</button>
       <button class="auth-tab" id="tabSignup" onclick="switchTab('signup')">Sign up</button>
     </div>
-    <div class="field"><label>Email</label><input type="email" id="authEmail" placeholder="you@email.com"></div>
-    <div class="field"><label>Password</label><input type="password" id="authPassword" placeholder="••••••••"></div>
+    <div class="field"><label>Email</label><input type="email" id="authEmail" placeholder="you@email.com" autocomplete="email"></div>
+    <div class="field"><label>Password</label><input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <input type="checkbox" id="rememberMe" checked style="accent-color:var(--ember);width:14px;height:14px;cursor:pointer;">
+      <label for="rememberMe" style="font-size:11px;color:var(--ash);cursor:pointer;letter-spacing:0.05em;">Remember me</label>
+    </div>
     <button class="primary-btn" id="authBtn" onclick="handleAuth()">Log in</button>
     <div style="text-align:center;margin-top:12px;">
       <button id="forgotBtn" onclick="showReset()" style="background:none;border:none;color:var(--ash);font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;letter-spacing:0.05em;text-decoration:underline;">Forgot password?</button>
@@ -402,6 +406,15 @@
         <div><div class="stat-val" id="profileMomentum">0</div><div class="stat-label">Momentum</div></div>
         <div><div class="stat-val" id="profileStreak">0</div><div class="stat-label">Day Streak</div></div>
       </div>
+      <button class="secondary-btn" onclick="showChangeUsername()" style="margin-top:0" id="changeUsernameBtn">Change username</button>
+      <div id="changeUsernameForm" style="display:none;margin-bottom:12px;">
+        <div class="field" style="margin-bottom:8px;"><input type="text" id="newUsernameInput" placeholder="New username…" maxlength="20" style="width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;color:var(--text);font-family:'Space Mono',monospace;font-size:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="edit-cancel-btn" onclick="hideChangeUsername()" style="flex:1">Cancel</button>
+          <button class="edit-save" onclick="submitChangeUsername()" style="flex:1;padding:12px;">Save</button>
+        </div>
+        <div class="err" id="usernameChangeErr" style="margin-top:8px;"></div>
+      </div>
       <button class="danger-btn" onclick="signOut()">Sign out</button>
       <button class="secondary-btn" onclick="initOnboarding()" style="margin-top:0">View rules</button>
     </div>
@@ -446,7 +459,7 @@ async function signUp(email, password) {
   return { data };
 }
 
-async function signIn(email, password) {
+async function signIn(email, password, remember = true) {
   const res = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
@@ -457,9 +470,12 @@ async function signIn(email, password) {
   accessToken = data.access_token;
   refreshToken = data.refresh_token;
   currentUser = data.user;
-  localStorage.setItem('sb_access', accessToken);
-  localStorage.setItem('sb_refresh', refreshToken);
-  localStorage.setItem('sb_user', JSON.stringify(currentUser));
+  if (remember) {
+    localStorage.setItem('sb_access', accessToken);
+    localStorage.setItem('sb_refresh', refreshToken);
+    localStorage.setItem('sb_user', JSON.stringify(currentUser));
+    localStorage.setItem('sb_email', email);
+  }
   return { data };
 }
 
@@ -560,6 +576,9 @@ function getStateKey() {
 async function boot() {
   // Check if this is a password reset redirect
   if (await checkResetToken()) return;
+  // Pre-fill remembered email
+  const savedEmail = localStorage.getItem('sb_email');
+  if (savedEmail && $('authEmail')) $('authEmail').value = savedEmail;
   // Try to restore session from localStorage
   const storedAccess = localStorage.getItem('sb_access');
   const storedUser   = localStorage.getItem('sb_user');
@@ -599,10 +618,6 @@ function showApp() {
   showScreen('appScreen');
   render();
   buildGoals();
-  // Show onboarding after login if first time
-  if (!localStorage.getItem('ob_done')) {
-    initOnboarding();
-  }
 }
 
 // ═══════════════════════════════════════
@@ -628,13 +643,14 @@ async function handleAuth() {
   $('authErr').textContent = '';
   try {
     let result;
+    const remember = $('rememberMe')?.checked ?? true;
     if (authMode === 'login') {
-      result = await signIn(email, pass);
+      result = await signIn(email, pass, remember);
     } else {
       result = await signUp(email, pass);
       if (!result.error) {
         // After signup, sign in to get tokens
-        result = await signIn(email, pass);
+        result = await signIn(email, pass, remember);
       }
     }
     if (result.error) throw new Error(result.error.error_description || result.error.msg || 'Error');
@@ -654,7 +670,10 @@ async function saveUsername() {
   if (error) { $('setupErr').textContent = error.message || 'Username taken'; return; }
   profile = { id: currentUser.id, username, momentum:0, streak:0 };
   await loadGoals();
+  localStorage.setItem('ob_done', '0'); // mark as new user so onboarding shows
   showApp();
+  // Show onboarding for new users only
+  initOnboarding();
 }
 
 // ═══════════════════════════════════════
@@ -796,10 +815,11 @@ function applyOfflineDrain() {
   const stored = localStorage.getItem('today_date');
   if (!stored || stored === dateStr()) return;
   const days = Math.round((new Date(dateStr()) - new Date(stored)) / 86400000);
+  // Note: velocity is not persisted — we check goals done state from DB
+  // For offline drain, if goals were completed that day they'd have been saved
+  // We treat each missed day as a miss since we can't know if goals were done
   for (let d = 0; d < days; d++) {
-    if (velocity > 0) {
-      mass++; missStreak = 0; velocity = 0;
-    } else {
+    {
       missStreak++;
       if (missStreak >= 2) {
         momentum = Math.max(0, momentum - calcDrain(missStreak));
@@ -1071,7 +1091,7 @@ async function endDay() {
     setTimeout(()=>{btn.textContent=orig;btn.style.borderColor='';btn.style.color='';},2500);
     return;
   }
-  const did = velocity > 0;
+  const did = GOALS.filter(g=>g.done && g.name).length > 0;
   if (did) {
     // completed goals — streak resumes, recovery cleared
     mass++;
@@ -1125,7 +1145,7 @@ async function sendNudge(toUserId) {
 }
 
 async function loadNudges() {
-  const {data} = await dbSelect('nudges', `to_user_id=eq.${currentUser.id}&seen=eq.false`, 'id,from_user_id,created_at,profiles!nudges_from_user_id_fkey(username)');
+  const {data} = await dbSelect('nudges', `to_user_id=eq.${currentUser.id}&seen=eq.false`, 'id,from_user_id,created_at');
   return data || [];
 }
 
@@ -1153,7 +1173,7 @@ async function loadLeaderboard() {
   const nudges = await loadNudges();
   if (nudges.length > 0) {
     // show nudge notification at top
-    const nudgeNames = nudges.map(n => n.profiles?.username || 'Someone').join(', ');
+    const nudgeNames = 'Someone';
     let nudgeBar = $('nudgeBar');
     if (!nudgeBar) {
       nudgeBar = document.createElement('div');
@@ -1199,6 +1219,11 @@ async function joinClan() {
   const {data:clans,error}=await dbSelect('clans',`invite_code=eq.${code}`);
   if(error||!clans||!clans[0]){$('clanErr').textContent='Invite code not found';return;}
   const clan=clans[0];
+  // Check if already a member
+  const {data:existing}=await dbSelect('clan_members',`clan_id=eq.${clan.id}&user_id=eq.${currentUser.id}`);
+  if(existing&&existing.length>0){$('clanErr').textContent='You are already in this clan';return;}
+  // Check if already in a different clan
+  if(currentClan){$('clanErr').textContent='Leave your current clan first';return;}
   const {error:e2}=await dbInsert('clan_members',{clan_id:clan.id,user_id:currentUser.id});
   if(e2){$('clanErr').textContent=e2.message||'Error';return;}
   currentClan=clan;await loadLeaderboard();
@@ -1228,6 +1253,54 @@ function loadProfile() {
   $('profileEmail').textContent=currentUser?.email??'';
   $('profileMomentum').textContent=Math.round(momentum*10)/10;
   $('profileStreak').textContent=mass;
+  // Show when they can next change username
+  const lastChange = localStorage.getItem('username_changed');
+  const btn = $('changeUsernameBtn');
+  if (lastChange) {
+    const daysSince = (Date.now() - parseInt(lastChange)) / 86400000;
+    if (daysSince < 7) {
+      const daysLeft = Math.ceil(7 - daysSince);
+      btn.textContent = `Change username (${daysLeft}d)`;
+      btn.disabled = true;
+      btn.style.opacity = '0.4';
+    } else {
+      btn.textContent = 'Change username';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    }
+  }
+}
+
+function showChangeUsername() {
+  $('changeUsernameForm').style.display = 'block';
+  $('changeUsernameBtn').style.display = 'none';
+  $('newUsernameInput').focus();
+}
+
+function hideChangeUsername() {
+  $('changeUsernameForm').style.display = 'none';
+  $('changeUsernameBtn').style.display = 'block';
+  $('usernameChangeErr').textContent = '';
+}
+
+async function submitChangeUsername() {
+  const newUsername = $('newUsernameInput').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
+  if (!newUsername || newUsername.length < 3) { $('usernameChangeErr').textContent = 'Min 3 chars, letters/numbers/underscore only'; return; }
+  if (newUsername === profile.username) { $('usernameChangeErr').textContent = 'That is already your username'; return; }
+  // Check 7 day limit
+  const lastChange = localStorage.getItem('username_changed');
+  if (lastChange && (Date.now() - parseInt(lastChange)) < 7 * 86400000) {
+    const daysLeft = Math.ceil(7 - (Date.now() - parseInt(lastChange)) / 86400000);
+    $('usernameChangeErr').textContent = `You can change your username in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`;
+    return;
+  }
+  $('usernameChangeErr').textContent = '';
+  const { error } = await dbUpdate('profiles', `id=eq.${currentUser.id}`, { username: newUsername });
+  if (error) { $('usernameChangeErr').textContent = error.message?.includes('unique') ? 'Username already taken' : (error.message || 'Error'); return; }
+  profile.username = newUsername;
+  localStorage.setItem('username_changed', Date.now().toString());
+  hideChangeUsername();
+  loadProfile();
 }
 
 // ═══════════════════════════════════════
@@ -1278,6 +1351,19 @@ const OB_TOTAL = 7;
 let obCurrent = 0;
 
 function initOnboarding() {
+  // Reset to first slide
+  obCurrent = 0;
+  // Reset all slides
+  for (let i = 0; i < OB_TOTAL; i++) {
+    const slide = $('ob' + i);
+    if (slide) {
+      slide.classList.remove('active', 'exit-left');
+      slide.style.transform = '';
+      slide.style.opacity = '';
+    }
+  }
+  $('ob0').classList.add('active');
+  $('obNextBtn').textContent = 'Next →';
   // Build dots
   const dots = $('obDots');
   dots.innerHTML = '';
