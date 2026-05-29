@@ -46,14 +46,14 @@
   .momentum{transition:transform 0.45s cubic-bezier(.34,1.56,.64,1),color 0.5s ease,text-shadow 1.4s ease;}
   .glow{transition:opacity 1.1s ease,background 1.4s ease;}
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html,body{height:100%;}
+  html,body{height:100%;height:-webkit-fill-available;}
   body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;display:flex;justify-content:center;overflow-x:hidden;}
-  .screen{display:none;width:100%;max-width:440px;min-height:100vh;padding:0 0 0 0;flex-direction:column;}
+  .screen{display:none;width:100%;max-width:440px;min-height:100vh;min-height:-webkit-fill-available;padding:0;flex-direction:column;}
   .screen.active{display:flex;}
   /* tabs viewport fills the screen, each tab scrolls independently */
-  .tabs-viewport{width:100%;overflow:hidden;flex:1;}
+  .tabs-viewport{width:100%;overflow:hidden;flex:1;min-height:0;}
   .tabs-track{display:flex;width:400%;transition:transform 0.38s cubic-bezier(.4,0,.2,1);will-change:transform;align-items:flex-start;}
-  .tab-content{width:calc(100%/4);flex-shrink:0;min-width:0;min-height:100vh;padding:36px 22px 100px;overflow-y:auto;}
+  .tab-content{width:calc(100%/4);flex-shrink:0;min-width:0;min-height:100vh;min-height:-webkit-fill-available;padding:36px 22px 120px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
   .glow{position:fixed;top:-160px;left:50%;transform:translateX(-50%);width:460px;height:460px;border-radius:50%;background:radial-gradient(circle,#3b82f6 0%,transparent 68%);opacity:0.12;filter:blur(40px);pointer-events:none;transition:opacity 1.1s ease,background 1.4s ease;}
   /* auth */
   .auth-title{font-family:'Sora',sans-serif;font-weight:900;font-size:52px;text-align:center;margin-bottom:6px;letter-spacing:-0.02em;}
@@ -98,10 +98,16 @@
   .today{font-family:'Sora',sans-serif;font-weight:600;font-size:19px;margin-bottom:4px;}
   .sub{font-size:11px;color:#7aa8d8;margin-bottom:16px;}
   /* goals */
-  .goal{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:background 0.25s,border-color 0.25s,transform 0.12s;}
+  .goal{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background 0.25s,border-color 0.25s,transform 0.12s,box-shadow 0.2s;}
   .goal:active{transform:scale(0.985);}
   .goal.done{background:var(--surface-lit);border-color:var(--done);cursor:default;}
   .goal.empty-slot{border-style:dashed;opacity:0.7;}
+  .goal.dragging{opacity:0.5;transform:scale(1.02);box-shadow:0 8px 24px rgba(0,0,0,0.3);z-index:100;transition:none !important;}
+  .goal.drag-over{border-color:var(--ember);border-style:dashed;}
+  .goal-num{font-family:'Sora',sans-serif;font-weight:700;font-size:13px;color:var(--ash);min-width:18px;text-align:center;flex-shrink:0;opacity:0.6;}
+  .drag-handle{color:var(--ash);font-size:16px;cursor:grab;flex-shrink:0;padding:0 2px;opacity:0.4;touch-action:none;user-select:none;-webkit-user-select:none;}
+  .drag-handle:active{cursor:grabbing;}
+  .goal.done .drag-handle,.goal.done .goal-num{opacity:0.25;}
   .check{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:border-color 0.25s,background 0.25s;}
   .goal.done .check{border-color:var(--done);background:var(--done);}
   .check svg{opacity:0;transition:opacity 0.2s;}
@@ -1578,14 +1584,17 @@ function buildGoals() {
   const wrap = $('goals');
   wrap.innerHTML = '';
   const named = GOALS.filter(g => g.name).length;
-  const done = GOALS.filter(g => g.done && g.name).length;
-  const sub = $('goalsSub');
+  const done  = GOALS.filter(g => g.done && g.name).length;
+  const sub   = $('goalsSub');
   if (sub) {
     if (named === 0) sub.textContent = 'Name your 3 goals below. Check them off as you go.';
     else if (done === named && named >= 3) sub.textContent = 'All done. Perfect day. ✓';
     else if (done > 0) sub.textContent = `${done} of ${named} done — keep going.`;
     else sub.textContent = 'Complete each one. Every goal builds momentum.';
   }
+
+  let namedCount = 0; // running count for the number badge (only named goals get a number)
+
   GOALS.forEach((goal, i) => {
     if (editingIndex === i) {
       const row = document.createElement('div');
@@ -1612,7 +1621,9 @@ function buildGoals() {
 
     if (goal.locked && !goal.name) {
       el.className = 'goal empty-slot';
-      el.innerHTML = `<div class="check" style="opacity:0.3"><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7L5 10L11 3" stroke="#0c0a07" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      el.dataset.index = i;
+      el.innerHTML = `<div class="goal-num">—</div>
+        <div class="check" style="opacity:0.3"><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7L5 10L11 3" stroke="#0c0a07" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <input class="inline-input" data-slot="${i}" type="text" placeholder="Name this goal…" maxlength="60">`;
       el.querySelector('input').addEventListener('blur', async e => {
         const val = e.target.value.trim();
@@ -1623,30 +1634,118 @@ function buildGoals() {
       return;
     }
 
-    el.className = 'goal'+(goal.done?' done':'');
-    const named = GOALS.filter(g=>g.name).length;
-    const pts = named>0 ? Math.round(100/named*10)/10 : 0;
-    el.innerHTML = `<div class="check"><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7L5 10L11 3" stroke="#0c0a07" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    namedCount++;
+    const pts = named > 0 ? Math.round(100 / named * 10) / 10 : 0;
+    el.className = 'goal' + (goal.done ? ' done' : '');
+    el.dataset.index = i;
+    el.innerHTML = `<div class="drag-handle" data-drag="${i}">⠿</div>
+      <div class="goal-num">${namedCount}</div>
+      <div class="check"><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7L5 10L11 3" stroke="#0c0a07" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="goal-name">${esc(goal.name)}</div>
-      <div class="goal-pts">${goal.done?'done':'+'+pts}</div>
+      <div class="goal-pts">${goal.done ? 'done' : '+' + pts}</div>
       <div class="goal-actions">
         ${goal.done
-          ?`<button class="icon-btn" data-undo="${i}">↺</button>`
-          :`<button class="icon-btn" data-edit="${i}">✎</button>`}
-        ${goal.locked?'':` <button class="icon-btn" data-del="${i}">&times;</button>`}
+          ? `<button class="icon-btn" data-undo="${i}">↺</button>`
+          : `<button class="icon-btn" data-edit="${i}">✎</button>`}
+        ${goal.locked ? '' : `<button class="icon-btn" data-del="${i}">&times;</button>`}
       </div>`;
-    el.addEventListener('click', e=>{if(e.target.closest('[data-del],[data-edit],[data-undo]'))return;toggleGoal(i,el);});
-    el.querySelector('[data-edit]')?.addEventListener('click',e=>{e.stopPropagation();editingIndex=i;buildGoals();});
-    el.querySelector('[data-undo]')?.addEventListener('click',e=>{e.stopPropagation();undoGoal(i);});
-    const db=el.querySelector('[data-del]');
-    if(db)db.addEventListener('click',e=>{e.stopPropagation();deleteGoal(i);});
+    el.addEventListener('click', e => { if (e.target.closest('[data-del],[data-edit],[data-undo],[data-drag]')) return; toggleGoal(i, el); });
+    el.querySelector('[data-edit]')?.addEventListener('click', e => { e.stopPropagation(); editingIndex = i; buildGoals(); });
+    el.querySelector('[data-undo]')?.addEventListener('click', e => { e.stopPropagation(); undoGoal(i); });
+    const db = el.querySelector('[data-del]');
+    if (db) db.addEventListener('click', e => { e.stopPropagation(); deleteGoal(i); });
+    // Wire drag handle
+    const handle = el.querySelector('[data-drag]');
+    if (handle) handle.addEventListener('touchstart', e => { e.stopPropagation(); startGoalDrag(e, i); }, { passive: false });
     wrap.appendChild(el);
   });
 }
 
 // ═══════════════════════════════════════
-//  GOAL ACTIONS
+//  GOAL DRAG TO REORDER
 // ═══════════════════════════════════════
+let dragState = null;
+
+function startGoalDrag(e, fromIndex) {
+  if (localStorage.getItem('day_ended') === dateStr()) return; // locked
+  e.preventDefault();
+  const wrap = $('goals');
+  const rows = Array.from(wrap.querySelectorAll('.goal[data-index]'));
+  const draggingEl = rows.find(r => parseInt(r.dataset.index) === fromIndex);
+  if (!draggingEl) return;
+
+  const rect = draggingEl.getBoundingClientRect();
+  const touch = e.touches[0];
+
+  draggingEl.classList.add('dragging');
+
+  dragState = {
+    fromIndex,
+    currentIndex: fromIndex,
+    el: draggingEl,
+    offsetY: touch.clientY - rect.top,
+    rows,
+    wrap,
+    wrapTop: wrap.getBoundingClientRect().top,
+  };
+
+  document.addEventListener('touchmove', onDragMove, { passive: false });
+  document.addEventListener('touchend', onDragEnd, { passive: true });
+}
+
+function onDragMove(e) {
+  if (!dragState) return;
+  e.preventDefault();
+  const { el, rows, wrap, offsetY } = dragState;
+  const touch = e.touches[0];
+  const y = touch.clientY;
+
+  // Move dragging element visually
+  const wrapRect = wrap.getBoundingClientRect();
+  const relY = y - wrapRect.top - offsetY;
+  el.style.position = 'relative';
+  el.style.zIndex = '200';
+  el.style.transform = `translateY(${relY - el.offsetTop}px) scale(1.02)`;
+
+  // Find which row we're hovering over
+  let hoverIndex = dragState.currentIndex;
+  rows.forEach(row => {
+    if (row === el) return;
+    row.classList.remove('drag-over');
+    const r = row.getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    if (y > mid - 10 && y < mid + 10) {
+      row.classList.add('drag-over');
+      hoverIndex = parseInt(row.dataset.index);
+    }
+  });
+  dragState.currentIndex = hoverIndex;
+}
+
+async function onDragEnd() {
+  if (!dragState) return;
+  document.removeEventListener('touchmove', onDragMove);
+  document.removeEventListener('touchend', onDragEnd);
+
+  const { el, fromIndex, currentIndex } = dragState;
+  el.classList.remove('dragging');
+  el.style.position = '';
+  el.style.zIndex = '';
+  el.style.transform = '';
+  dragState.rows.forEach(r => r.classList.remove('drag-over'));
+  dragState = null;
+
+  if (fromIndex !== currentIndex) {
+    // Reorder GOALS array
+    const moved = GOALS.splice(fromIndex, 1)[0];
+    GOALS.splice(currentIndex, 0, moved);
+    // Save new positions to DB
+    await Promise.all(GOALS.map((g, pos) => {
+      if (g.db_id) return dbUpdate('goals', `id=eq.${g.db_id}`, { position: pos });
+    }));
+    buildGoals(); render();
+  }
+}
 async function toggleGoal(i, el) {
   const goal=GOALS[i];
   if(goal.done||(goal.locked&&!goal.name))return;
@@ -2163,10 +2262,10 @@ function openCropModal(file) {
 
 function applyCropTransform() {
   const img = $('cropImg');
-  img.style.width = cropState.natW + 'px';
+  // Use transform-origin: 0 0 so translate + scale compose predictably
+  img.style.transformOrigin = '0 0';
+  img.style.width  = cropState.natW + 'px';
   img.style.height = cropState.natH + 'px';
-  img.style.transform = `translate(${cropState.x}px, ${cropState.y}px) scale(${cropState.scale / 1})`;
-  // We scale via width/height instead — simpler: use transform scale on natural size
   img.style.transform = `translate(${cropState.x}px, ${cropState.y}px) scale(${cropState.scale})`;
 }
 
@@ -2218,9 +2317,8 @@ function cancelCrop() {
   $('cropImg').src = '';
 }
 
-// Render the cropped circle to a canvas and store the blob (don't upload yet)
+// Render the cropped area to a canvas — uses 9-arg drawImage for correct source cropping
 function confirmCrop() {
-  // Use a fresh Image to avoid any taint issues with the DOM img element
   const sourceImg = new Image();
   sourceImg.onload = function() {
     try {
@@ -2228,39 +2326,45 @@ function confirmCrop() {
       const canvas = document.createElement('canvas');
       canvas.width = out; canvas.height = out;
       const ctx = canvas.getContext('2d');
-      // draw background to avoid transparency issues
+
+      // Fill background
       ctx.fillStyle = '#07090f';
       ctx.fillRect(0, 0, out, out);
-      // circular clip
+
+      // Circular clip
       ctx.beginPath();
-      ctx.arc(out/2, out/2, out/2, 0, Math.PI*2);
+      ctx.arc(out / 2, out / 2, out / 2, 0, Math.PI * 2);
       ctx.closePath();
       ctx.clip();
-      // draw image with crop position
-      const k = out / STAGE;
-      ctx.drawImage(
-        sourceImg,
-        cropState.x * k,
-        cropState.y * k,
-        cropState.natW * cropState.scale * k,
-        cropState.natH * cropState.scale * k
-      );
-      // store dataURL directly — most reliable approach
+
+      // cropState.x / cropState.y are the translate offsets (always ≤ 0 after clamping)
+      // The visible region in image-natural-coords:
+      //   srcX = -cropState.x / cropState.scale
+      //   srcY = -cropState.y / cropState.scale
+      //   srcW = STAGE / cropState.scale  (how many natural px fit in the STAGE viewport)
+      //   srcH = STAGE / cropState.scale
+      const srcX =  -cropState.x / cropState.scale;
+      const srcY =  -cropState.y / cropState.scale;
+      const srcW = STAGE / cropState.scale;
+      const srcH = STAGE / cropState.scale;
+
+      ctx.drawImage(sourceImg, srcX, srcY, srcW, srcH, 0, 0, out, out);
+
       pendingAvatarDataURL = canvas.toDataURL('image/jpeg', 0.92);
-      // show preview on profile avatar
       showAvatarPreview(pendingAvatarDataURL);
       markProfileDirty();
       cancelCrop();
-    } catch(err) {
-      console.error('Canvas error:', err);
-      // fallback: just use the raw file dataURL as preview
+    } catch (err) {
+      console.error('Canvas crop error:', err);
+      // Fallback: use raw file as preview, still allow save
       pendingAvatarDataURL = cropRawDataURL;
       showAvatarPreview(pendingAvatarDataURL);
       markProfileDirty();
       cancelCrop();
     }
   };
-  sourceImg.src = cropRawDataURL; // use stored raw dataURL
+  sourceImg.crossOrigin = 'anonymous';
+  sourceImg.src = cropRawDataURL;
 }
 
 function showAvatarPreview(dataURL) {
@@ -2273,26 +2377,28 @@ function showAvatarPreview(dataURL) {
   av.appendChild(img);
 }
 
-// Actually upload the pending blob to Supabase
+// Upload avatar to Supabase storage — PUT with upsert is reliable for both new and update
 async function uploadAvatarDataURL(dataURL) {
   if (!dataURL || !currentUser) return false;
-  // convert dataURL to binary
   const base64 = dataURL.split(',')[1];
   const byteStr = atob(base64);
   const ab = new ArrayBuffer(byteStr.length);
   const ia = new Uint8Array(ab);
   for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
-  const res = await fetch(`${SUPA_URL}/storage/v1/object/avatars/${currentUser.id}/avatar`, {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + accessToken,
-      'apikey': SUPA_KEY,
-      'Content-Type': 'image/jpeg',
-      'x-upsert': 'true'
-    },
-    body: ab
-  });
-  return res.ok;
+  // Try PUT first (update), fall back to POST (create) if 404
+  const path = `${SUPA_URL}/storage/v1/object/avatars/${currentUser.id}/avatar`;
+  const headers = {
+    'Authorization': 'Bearer ' + accessToken,
+    'apikey': SUPA_KEY,
+    'Content-Type': 'image/jpeg',
+    'x-upsert': 'true',
+    'cache-control': '3600'
+  };
+  const res = await fetch(path, { method: 'POST', headers, body: ab });
+  if (res.ok) return true;
+  // If POST failed (file may already exist without upsert support), try PUT
+  const res2 = await fetch(path, { method: 'PUT', headers, body: ab });
+  return res2.ok;
 }
 
 async function loadProfileAvatar() {
