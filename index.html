@@ -131,7 +131,7 @@
     font-family:'Sora',sans-serif;font-weight:700;font-size:16px;
     color:var(--ember);overflow:hidden;
   }
-  .avatar img { width:100%;height:100%;object-fit:cover;border-radius:50%; }
+  .avatar img { width:100%;height:100%;object-fit:cover;border-radius:50%;pointer-events:none; }
   .avatar-lg {
     width:80px;height:80px;font-size:32px;
     border:2px solid var(--ember);margin:0 auto 16px;cursor:pointer;
@@ -141,9 +141,54 @@
     content:'change';position:absolute;bottom:0;left:0;right:0;
     background:rgba(0,0,0,0.6);font-size:9px;letter-spacing:0.1em;
     text-transform:uppercase;color:var(--text);text-align:center;
-    padding:4px 0;border-radius:0 0 50% 50%;
+    padding:4px 0;border-radius:0 0 50% 50%;pointer-events:none;
   }
   .avatar-upload { display:none; }
+  /* avatar reposition modal */
+  #avatarModal {
+    position:fixed;inset:0;background:rgba(3,5,10,0.92);z-index:11000;
+    display:none;flex-direction:column;align-items:center;justify-content:center;
+    padding:24px;
+  }
+  #avatarModal.open { display:flex; }
+  .crop-title { font-family:'Sora',sans-serif;font-weight:800;font-size:20px;margin-bottom:6px;color:var(--text); }
+  .crop-sub { font-size:11px;color:var(--ash);margin-bottom:24px;letter-spacing:0.05em;text-align:center; }
+  .crop-stage {
+    width:260px;height:260px;border-radius:50%;overflow:hidden;
+    position:relative;border:2px solid var(--ember);
+    touch-action:none;cursor:grab;background:var(--surface);
+    margin-bottom:8px;
+  }
+  .crop-stage:active { cursor:grabbing; }
+  .crop-stage img {
+    position:absolute;transform-origin:0 0;pointer-events:none;
+    user-select:none;-webkit-user-drag:none;max-width:none;
+  }
+  .crop-hint { font-size:10px;color:var(--ash);margin-bottom:16px;letter-spacing:0.08em; }
+  .crop-zoom { width:260px;margin-bottom:24px;display:flex;align-items:center;gap:10px; }
+  .crop-zoom input { flex:1;accent-color:var(--ember); }
+  .crop-zoom span { font-size:14px; }
+  .crop-actions { display:flex;gap:10px;width:260px; }
+  .crop-actions button {
+    flex:1;padding:13px;border-radius:12px;font-family:'Space Grotesk',sans-serif;
+    font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.05em;
+  }
+  .crop-cancel { background:transparent;border:1px solid var(--line);color:var(--ash); }
+  .crop-confirm { background:var(--ember);border:none;color:#fff; }
+  /* profile save bar */
+  #profileSaveBar {
+    display:none;background:var(--surface-lit);border:1px solid var(--ember);
+    border-radius:12px;padding:12px 16px;margin-bottom:16px;
+    align-items:center;justify-content:space-between;gap:12px;
+  }
+  #profileSaveBar.show { display:flex; }
+  #profileSaveBar span { font-size:11px;color:var(--ember-soft);letter-spacing:0.03em; }
+  #profileSaveBtn {
+    background:var(--ember);color:#fff;border:none;border-radius:8px;
+    padding:8px 16px;font-family:'Space Grotesk',sans-serif;font-size:11px;
+    font-weight:700;cursor:pointer;flex-shrink:0;letter-spacing:0.05em;
+  }
+  #profileSaveBtn:disabled { opacity:0.5;cursor:default; }
   /* tab transitions */
   .tab-content { animation: tabFadeIn 0.22s ease; }
   @keyframes tabFadeIn {
@@ -317,6 +362,25 @@
   </div>
 </div>
 
+<!-- AVATAR REPOSITION MODAL -->
+<div id="avatarModal">
+  <div class="crop-title">Position your photo</div>
+  <div class="crop-sub">Drag to move · slide to zoom</div>
+  <div class="crop-stage" id="cropStage">
+    <img id="cropImg" src="" alt="">
+  </div>
+  <div class="crop-hint">drag the image to reposition</div>
+  <div class="crop-zoom">
+    <span style="font-size:11px;color:var(--ash)">−</span>
+    <input type="range" id="cropZoom" min="100" max="300" value="100">
+    <span style="font-size:15px;color:var(--ash)">+</span>
+  </div>
+  <div class="crop-actions">
+    <button class="crop-cancel" onclick="cancelCrop()">Cancel</button>
+    <button class="crop-confirm" onclick="confirmCrop()">Use photo</button>
+  </div>
+</div>
+
 <div id="loadingScreen"><div class="spinner"></div></div>
 <div class="glow" id="glow"></div>
 
@@ -472,6 +536,10 @@
       <input type="file" id="avatarUpload" class="avatar-upload" accept="image/*">
       <div class="profile-username" id="profileUsername">—</div>
       <div class="profile-email" id="profileEmail">—</div>
+      <div id="profileSaveBar">
+        <span>You have unsaved changes</span>
+        <button id="profileSaveBtn" onclick="saveProfileChanges()">Save</button>
+      </div>
       <div class="stat-box">
         <div><div class="stat-val" id="profileMomentum">0</div><div class="stat-label">Momentum</div></div>
         <div><div class="stat-val" id="profileStreak">0</div><div class="stat-label">Day Streak</div></div>
@@ -1337,25 +1405,146 @@ async function getAvatarUrl(userId) {
   } catch(e) { return null; }
 }
 
-async function uploadAvatar(file) {
-  if (!file || !currentUser) return;
-  const arrayBuffer = await file.arrayBuffer();
+// ── crop/reposition state ──
+let cropState = { img: null, scale: 1, baseScale: 1, x: 0, y: 0, natW: 0, natH: 0, dragging: false, startX: 0, startY: 0, startPosX: 0, startPosY: 0 };
+let pendingAvatarBlob = null; // holds the cropped image until Save is pressed
+let profileDirty = false;     // true when there are unsaved changes
+const STAGE = 260;            // crop stage size in px
+
+function triggerAvatarUpload() {
+  $('avatarUpload').click();
+}
+
+// When a file is chosen, open the crop modal
+function openCropModal(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = $('cropImg');
+    img.onload = () => {
+      cropState.natW = img.naturalWidth;
+      cropState.natH = img.naturalHeight;
+      // base scale = cover the stage (fill the circle)
+      cropState.baseScale = Math.max(STAGE / cropState.natW, STAGE / cropState.natH);
+      cropState.scale = cropState.baseScale;
+      // center the image
+      cropState.x = (STAGE - cropState.natW * cropState.scale) / 2;
+      cropState.y = (STAGE - cropState.natH * cropState.scale) / 2;
+      $('cropZoom').value = 100;
+      applyCropTransform();
+      $('avatarModal').classList.add('open');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function applyCropTransform() {
+  const img = $('cropImg');
+  img.style.width = cropState.natW + 'px';
+  img.style.height = cropState.natH + 'px';
+  img.style.transform = `translate(${cropState.x}px, ${cropState.y}px) scale(${cropState.scale / 1})`;
+  // We scale via width/height instead — simpler: use transform scale on natural size
+  img.style.transform = `translate(${cropState.x}px, ${cropState.y}px) scale(${cropState.scale})`;
+}
+
+function clampCrop() {
+  const w = cropState.natW * cropState.scale;
+  const h = cropState.natH * cropState.scale;
+  // don't let edges go inside the circle (keep image covering the stage)
+  if (cropState.x > 0) cropState.x = 0;
+  if (cropState.y > 0) cropState.y = 0;
+  if (cropState.x < STAGE - w) cropState.x = STAGE - w;
+  if (cropState.y < STAGE - h) cropState.y = STAGE - h;
+}
+
+// Drag handlers
+function cropPointerDown(e) {
+  cropState.dragging = true;
+  const pt = e.touches ? e.touches[0] : e;
+  cropState.startX = pt.clientX;
+  cropState.startY = pt.clientY;
+  cropState.startPosX = cropState.x;
+  cropState.startPosY = cropState.y;
+}
+function cropPointerMove(e) {
+  if (!cropState.dragging) return;
+  e.preventDefault();
+  const pt = e.touches ? e.touches[0] : e;
+  cropState.x = cropState.startPosX + (pt.clientX - cropState.startX);
+  cropState.y = cropState.startPosY + (pt.clientY - cropState.startY);
+  clampCrop();
+  applyCropTransform();
+}
+function cropPointerUp() { cropState.dragging = false; }
+
+function onCropZoom() {
+  const pct = parseInt($('cropZoom').value) / 100; // 1.0 to 3.0
+  const newScale = cropState.baseScale * pct;
+  // zoom toward center of stage
+  const cx = STAGE / 2, cy = STAGE / 2;
+  const ratio = newScale / cropState.scale;
+  cropState.x = cx - (cx - cropState.x) * ratio;
+  cropState.y = cy - (cy - cropState.y) * ratio;
+  cropState.scale = newScale;
+  clampCrop();
+  applyCropTransform();
+}
+
+function cancelCrop() {
+  $('avatarModal').classList.remove('open');
+  $('cropImg').src = '';
+}
+
+// Render the cropped circle to a canvas and store the blob (don't upload yet)
+function confirmCrop() {
+  const out = 400; // output resolution
+  const canvas = document.createElement('canvas');
+  canvas.width = out; canvas.height = out;
+  const ctx = canvas.getContext('2d');
+  // circular clip
+  ctx.beginPath();
+  ctx.arc(out/2, out/2, out/2, 0, Math.PI*2);
+  ctx.closePath();
+  ctx.clip();
+  // map stage coords to output coords
+  const k = out / STAGE;
+  const img = $('cropImg');
+  ctx.drawImage(
+    img,
+    cropState.x * k,
+    cropState.y * k,
+    cropState.natW * cropState.scale * k,
+    cropState.natH * cropState.scale * k
+  );
+  canvas.toBlob(blob => {
+    pendingAvatarBlob = blob;
+    // preview it on the profile avatar immediately
+    const url = URL.createObjectURL(blob);
+    const pImg = $('profileAvatarImg');
+    pImg.src = url;
+    pImg.style.display = 'block';
+    $('profileAvatar').textContent = '';
+    $('profileAvatar').appendChild(pImg);
+    markProfileDirty();
+    cancelCrop();
+  }, 'image/jpeg', 0.9);
+}
+
+// Actually upload the pending blob to Supabase
+async function uploadAvatarBlob(blob) {
+  if (!blob || !currentUser) return false;
+  const arrayBuffer = await blob.arrayBuffer();
   const res = await fetch(`${SUPA_URL}/storage/v1/object/avatars/${currentUser.id}/avatar`, {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer ' + accessToken,
       'apikey': SUPA_KEY,
-      'Content-Type': file.type,
+      'Content-Type': 'image/jpeg',
       'x-upsert': 'true'
     },
     body: arrayBuffer
   });
-  if (res.ok) {
-    await loadProfileAvatar();
-  } else {
-    const err = await res.json().catch(()=>({}));
-    alert('Upload failed: ' + (err.message || 'unknown error'));
-  }
+  return res.ok;
 }
 
 async function loadProfileAvatar() {
@@ -1373,12 +1562,38 @@ async function loadProfileAvatar() {
   }
 }
 
-function triggerAvatarUpload() {
-  $('avatarUpload').click();
+// ── unsaved changes / save logic ──
+function markProfileDirty() {
+  profileDirty = true;
+  $('profileSaveBar').classList.add('show');
+}
+
+function clearProfileDirty() {
+  profileDirty = false;
+  pendingAvatarBlob = null;
+  $('profileSaveBar').classList.remove('show');
+}
+
+async function saveProfileChanges() {
+  const btn = $('profileSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    if (pendingAvatarBlob) {
+      const ok = await uploadAvatarBlob(pendingAvatarBlob);
+      if (!ok) { alert('Could not save photo. Try again.'); btn.disabled=false; btn.textContent='Save'; return; }
+    }
+    clearProfileDirty();
+    btn.textContent = 'Saved ✓';
+    setTimeout(()=>{ btn.textContent='Save'; btn.disabled=false; }, 1500);
+  } catch(e) {
+    alert('Something went wrong saving your profile.');
+    btn.disabled = false; btn.textContent = 'Save';
+  }
 }
 
 function loadProfile() {
   if(!profile)return;
+  clearProfileDirty();
   $('profileAvatar').textContent=(profile.username||'?')[0].toUpperCase();
   loadProfileAvatar();
   $('profileUsername').textContent=profile.username;
@@ -1439,6 +1654,14 @@ async function submitChangeUsername() {
 //  TAB NAV
 // ═══════════════════════════════════════
 function showTab(tab) {
+  // Block leaving profile tab if there are unsaved changes
+  const onProfile = $('tabProfile').style.display !== 'none';
+  if (onProfile && profileDirty && tab !== 'profile') {
+    const leave = confirm('You have unsaved profile changes. Leave without saving?');
+    if (!leave) return;
+    clearProfileDirty();
+    loadProfileAvatar(); // revert preview to saved avatar
+  }
   ['Momentum','Leaderboard','Profile'].forEach(t=>{
     $('tab'+t).style.display='none';
     $('nav'+t).classList.remove('active');
@@ -1463,11 +1686,27 @@ $('addCancel').addEventListener('click',closeAdd);
 $('addSave').addEventListener('click',()=>{addGoal($('addInput').value);closeAdd();});
 $('addInput').addEventListener('keydown',e=>{if(e.key==='Enter'){addGoal($('addInput').value);closeAdd();}});
 $('dayBtn').addEventListener('click',endDay);
-$('avatarUpload').addEventListener('change', async e => {
+$('avatarUpload').addEventListener('change', e => {
   const file = e.target.files[0];
-  if (file) await uploadAvatar(file);
+  if (file) openCropModal(file);
   e.target.value = ''; // reset so same file can be selected again
 });
+
+// crop stage drag + zoom listeners
+(function(){
+  const stage = $('cropStage');
+  if (!stage) return;
+  // mouse
+  stage.addEventListener('mousedown', cropPointerDown);
+  window.addEventListener('mousemove', cropPointerMove);
+  window.addEventListener('mouseup', cropPointerUp);
+  // touch
+  stage.addEventListener('touchstart', cropPointerDown, {passive:false});
+  window.addEventListener('touchmove', cropPointerMove, {passive:false});
+  window.addEventListener('touchend', cropPointerUp);
+  // zoom
+  $('cropZoom').addEventListener('input', onCropZoom);
+})();
 $('authPassword').addEventListener('keydown',e=>{if(e.key==='Enter')handleAuth();});
 
 async function checkNudgesOnLoad() {
