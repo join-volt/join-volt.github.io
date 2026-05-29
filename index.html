@@ -802,7 +802,7 @@ async function handleAuth() {
 
 async function saveUsername() {
   const username = $('usernameInput').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
-  if (!username || username.length < 3) { $('setupErr').textContent = 'Min 3 chars, letters/numbers/underscore only'; return; }
+  if (!username || username.length < 3) { $('setupErr').textContent = 'Min 3 chars — letters, numbers, _ . - only'; return; }
   $('setupErr').textContent = '';
   const { error } = await dbInsert('profiles', { id: currentUser.id, username, momentum:0, streak:0 });
   if (error) { $('setupErr').textContent = error.message || 'Username taken'; return; }
@@ -1657,8 +1657,8 @@ function hideChangeUsername() {
 }
 
 async function submitChangeUsername() {
-  const newUsername = $('newUsernameInput').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
-  if (!newUsername || newUsername.length < 3) { $('usernameChangeErr').textContent = 'Min 3 chars, letters/numbers/underscore only'; return; }
+  const newUsername = $('newUsernameInput').value.trim().toLowerCase().replace(/[^a-z0-9_.\-]/g,'');
+  if (!newUsername || newUsername.length < 3) { $('usernameChangeErr').textContent = 'Min 3 chars — letters, numbers, _ . - only'; return; }
   if (newUsername === profile.username) { $('usernameChangeErr').textContent = 'That is already your username'; return; }
   // Check 7 day limit
   const lastChange = localStorage.getItem('username_changed');
@@ -1810,6 +1810,31 @@ function finishOnboarding() {
   localStorage.setItem('ob_done', '1');
   $('onboardingScreen').style.display = 'none';
 }
+
+// ═══════════════════════════════════════
+//  SWIPE BETWEEN TABS
+// ═══════════════════════════════════════
+(function() {
+  const TABS = ['momentum', 'leaderboard', 'profile'];
+  let touchStartX = 0, touchStartY = 0;
+
+  document.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  document.addEventListener('touchend', e => {
+    // only swipe when app screen is active
+    if (!$('appScreen') || !$('appScreen').classList.contains('active')) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    // must be horizontal swipe (dx > dy) and long enough
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const current = TABS.findIndex(t => $('tab' + t.charAt(0).toUpperCase() + t.slice(1)).style.display !== 'none');
+    if (dx < 0 && current < TABS.length - 1) showTab(TABS[current + 1]); // swipe left → next
+    if (dx > 0 && current > 0) showTab(TABS[current - 1]); // swipe right → prev
+  }, { passive: true });
+})();
 
 // Boot
 boot();
