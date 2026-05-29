@@ -1497,37 +1497,58 @@ function cancelCrop() {
 
 // Render the cropped circle to a canvas and store the blob (don't upload yet)
 function confirmCrop() {
-  const out = 400; // output resolution
-  const canvas = document.createElement('canvas');
-  canvas.width = out; canvas.height = out;
-  const ctx = canvas.getContext('2d');
-  // circular clip
-  ctx.beginPath();
-  ctx.arc(out/2, out/2, out/2, 0, Math.PI*2);
-  ctx.closePath();
-  ctx.clip();
-  // map stage coords to output coords
-  const k = out / STAGE;
-  const img = $('cropImg');
-  ctx.drawImage(
-    img,
-    cropState.x * k,
-    cropState.y * k,
-    cropState.natW * cropState.scale * k,
-    cropState.natH * cropState.scale * k
-  );
-  canvas.toBlob(blob => {
+  try {
+    const out = 400;
+    const canvas = document.createElement('canvas');
+    canvas.width = out; canvas.height = out;
+    const ctx = canvas.getContext('2d');
+
+    // circular clip
+    ctx.beginPath();
+    ctx.arc(out/2, out/2, out/2, 0, Math.PI*2);
+    ctx.closePath();
+    ctx.clip();
+
+    // With transform-origin:0 0 and translate(x,y) scale(s):
+    // top-left of rendered image is at (cropState.x, cropState.y) in stage coords
+    const k = out / STAGE;
+    const img = $('cropImg');
+
+    ctx.drawImage(
+      img,
+      cropState.x * k,
+      cropState.y * k,
+      cropState.natW * cropState.scale * k,
+      cropState.natH * cropState.scale * k
+    );
+
+    // Use toDataURL as it's more reliable than toBlob across browsers
+    const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+
+    // Convert dataURL to blob manually
+    const byteString = atob(dataURL.split(',')[1]);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+    const blob = new Blob([ab], { type: 'image/jpeg' });
+
     pendingAvatarBlob = blob;
-    // preview it on the profile avatar immediately
-    const url = URL.createObjectURL(blob);
+
+    // Preview on profile avatar immediately
     const pImg = $('profileAvatarImg');
-    pImg.src = url;
+    pImg.src = dataURL;
     pImg.style.display = 'block';
-    $('profileAvatar').textContent = '';
-    $('profileAvatar').appendChild(pImg);
+    const av = $('profileAvatar');
+    // clear text content but keep img
+    while (av.firstChild) av.removeChild(av.firstChild);
+    av.appendChild(pImg);
+
     markProfileDirty();
     cancelCrop();
-  }, 'image/jpeg', 0.9);
+  } catch(err) {
+    console.error('Crop error:', err);
+    alert('Could not process image. Try a different photo.');
+  }
 }
 
 // Actually upload the pending blob to Supabase
