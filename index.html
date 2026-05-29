@@ -52,8 +52,6 @@
   .label{font-size:11px;letter-spacing:0.32em;text-transform:uppercase;color:#7aa8d8;text-align:center;margin-bottom:8px;}
   .momentum{font-family:'Sora',sans-serif;font-weight:900;font-size:112px;line-height:1;text-align:center;color:var(--text);letter-spacing:-0.03em;transition:transform 0.45s cubic-bezier(.34,1.56,.64,1),color 0.5s ease,text-shadow 1.4s ease;user-select:none;}
   .momentum.pulse{transform:scale(1.09);color:var(--ember-soft);}
-  /* Volt Score hero — stable, not pulsing — feels permanent */
-  #voltScoreHero{font-size:72px;text-shadow:0 0 30px rgba(96,165,250,0.2);}
   /* breathing animations per state */
   @keyframes breathe-ignition{0%,100%{text-shadow:0 0 20px rgba(96,165,250,0.25);}50%{text-shadow:0 0 40px rgba(96,165,250,0.55),0 0 80px rgba(96,165,250,0.2);}}
   @keyframes breathe-flow{0%,100%{text-shadow:0 0 24px rgba(56,189,248,0.3);}50%{text-shadow:0 0 60px rgba(56,189,248,0.65),0 0 100px rgba(56,189,248,0.2);}}
@@ -535,18 +533,8 @@
       </svg>
       <span style="font-family:'Sora',sans-serif;font-weight:900;font-size:16px;color:#e8f4ff;letter-spacing:-0.01em">Volt</span>
     </div>
-    <div class="label" style="margin-bottom:6px;">Today's scores</div>
-    <!-- Dual hero metrics: Momentum + Volt Score side by side -->
-    <div style="display:flex;justify-content:center;gap:0;margin-bottom:2px;">
-      <div style="flex:1;text-align:center;padding-right:12px;border-right:1px solid var(--line);">
-        <div style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:#7aa8d8;margin-bottom:4px;">Momentum</div>
-        <div class="momentum" id="momentum">0</div>
-      </div>
-      <div style="flex:1;text-align:center;padding-left:12px;">
-        <div style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:#7aa8d8;margin-bottom:4px;">Volt Score</div>
-        <div class="momentum" id="voltScoreHero" style="color:var(--ember-soft);">0</div>
-      </div>
-    </div>
+    <div class="label">Your momentum</div>
+    <div style="display:flex;justify-content:center;margin-bottom:4px;"><div class="momentum" id="momentum">0</div></div>
     <div class="state" id="state"></div>
     <div class="drain-line" id="drainLine"></div>
     <div class="drain-countdown" id="drainCountdown"></div>
@@ -804,6 +792,12 @@ let editingIndex = -1;
 let authMode = 'login';
 
 const $ = id => document.getElementById(id);
+
+// Format a score: 0 → "0", non-zero → 1 decimal place ("47.3")
+function fmtScore(v) {
+  const r = Math.round(v * 10) / 10;
+  return r === 0 ? '0' : r.toFixed(1);
+}
 
 // ═══════════════════════════════════════
 //  STATES
@@ -1107,10 +1101,7 @@ function render() {
   const key = getStateKey();
   const st  = STATES[key];
   const momEl = $('momentum');
-  momEl.textContent = (Math.round(momentum*10)/10).toFixed(1);
-  // Update Volt Score hero on Today tab
-  const vsHero = $('voltScoreHero');
-  if (vsHero) vsHero.textContent = (Math.round(voltScore*10)/10).toFixed(1);
+  momEl.textContent = fmtScore(momentum);
   // breathing class
   momEl.className = 'momentum';
   if (key !== 'cold') momEl.classList.add('state-' + key);
@@ -1270,8 +1261,8 @@ function renderMainChart() {
   const avg = dataVals.length ? Math.round((dataVals.reduce((a,b)=>a+b,0)/dataVals.length)*10)/10 : 0;
   const daysActive = dataVals.filter(v => v > 0).length;
 
-  if (peakEl) peakEl.textContent = peak.toFixed(1);
-  if (avgEl) avgEl.textContent = avg.toFixed(1);
+  if (peakEl) peakEl.textContent = fmtScore(peak);
+  if (avgEl) avgEl.textContent = fmtScore(avg);
   if (daysActiveEl) daysActiveEl.textContent = daysActive;
 
   // Draw chart
@@ -1386,7 +1377,7 @@ function renderMainChart() {
         const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
         const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const isToday = e.d === dateStr();
-        row.innerHTML = `<div style="font-size:12px;color:${isToday?'var(--ember-soft)':'var(--ash)'};">${isToday ? 'Today' : days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()]}</div><div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:var(--ember);">${(Math.round(e.m*10)/10).toFixed(1)}</div>`;
+        row.innerHTML = `<div style="font-size:12px;color:${isToday?'var(--ember-soft)':'var(--ash)'};">${isToday ? 'Today' : days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()]}</div><div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:var(--ember);">${fmtScore(e.m)}</div>`;
         historyList.appendChild(row);
       });
     }
@@ -1414,7 +1405,7 @@ function checkReturnReminder() {
     const txt = $('returnBannerText');
     if (txt) {
       if (momentum > 0) {
-        txt.textContent = `You were away ${hoursRound}h. Your momentum is at ${(Math.round(momentum*10)/10).toFixed(1)} — let's keep it moving.`;
+        txt.textContent = `You were away ${hoursRound}h. Your momentum is at ${fmtScore(momentum)} — let's keep it moving.`;
       } else {
         txt.textContent = `Welcome back after ${hoursRound} hours. Time to rebuild.`;
       }
@@ -1583,7 +1574,12 @@ async function undoGoal(i) {
   const gain=calcGain();
   const delta=Math.round((prev-gain)*10)/10;
   momentum=Math.max(0,Math.round((momentum-prev+gain)*10)/10);
-  if(delta>0){const mr=$('momentum').getBoundingClientRect();fly('-'+delta,mr.left+mr.width/2,mr.top+mr.height/2-10,'drain');}
+  // Subtract from voltScore when a goal is unticked — keeps it accurate to actual earned momentum
+  if(delta>0){
+    voltScore=Math.max(0,Math.round((voltScore-delta)*10)/10);
+    const mr=$('momentum').getBoundingClientRect();
+    fly('-'+delta,mr.left+mr.width/2,mr.top+mr.height/2-10,'drain');
+  }
   buildGoals();render();
   if(goal.db_id)await dbUpdate('goals',`id=eq.${goal.db_id}`,{done:false});
   await saveProfile();
@@ -1598,7 +1594,10 @@ async function deleteGoal(i) {
   if(wasDone){
     const delta=Math.round((prev-gain)*10)/10;
     momentum=Math.max(0,Math.round((momentum-prev+gain)*10)/10);
-    if(delta>0){const mr=$('momentum').getBoundingClientRect();fly('-'+delta,mr.left+mr.width/2,mr.top+mr.height/2-10,'drain');}
+    if(delta>0){
+      voltScore=Math.max(0,Math.round((voltScore-delta)*10)/10);
+      const mr=$('momentum').getBoundingClientRect();fly('-'+delta,mr.left+mr.width/2,mr.top+mr.height/2-10,'drain');
+    }
   }
   buildGoals();render();
   if(db_id)await dbDelete('goals',`id=eq.${db_id}`);
@@ -1644,7 +1643,7 @@ function animateCounter(el, from, to, duration, decimal=false) {
     const t = Math.min((now - start) / duration, 1);
     const eased = 1 - Math.pow(1 - t, 3);
     const val = from + (to - from) * eased;
-    el.textContent = decimal ? (Math.round(val*10)/10).toFixed(1) : Math.round(val);
+    el.textContent = decimal ? fmtScore(from + (to - from) * eased) : Math.round(from + (to - from) * eased);
     if (t < 1) requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
@@ -1855,34 +1854,81 @@ async function loadLeaderboard() {
   await loadClan();
   const noClan=$('noClanMsg'),clanAct=$('clanActions'),clanMgmt=$('clanMgmt');
   const resetLabel=$('weekResetLabel');
+  const list=$('leaderboardList');
+
   if(!currentClan){
     if(resetLabel)resetLabel.style.display='none';
-    noClan.style.display='block';clanAct.style.display='block';clanMgmt.style.display='none';
-    $('clanName').textContent='No clan yet';$('leaderboardList').innerHTML='';return;
+    noClan.style.display='block';
+    clanAct.style.display='block';
+    clanMgmt.style.display='none';
+    $('clanName').textContent='No clan yet';
+    list.innerHTML='';
+    return;
   }
-  noClan.style.display='none';clanAct.style.display='none';clanMgmt.style.display='block';
+
+  // Clan exists — show management, hide join/create forms
+  noClan.style.display='none';
+  clanAct.style.display='none';
+  clanMgmt.style.display='block';
   $('clanName').textContent=currentClan.name;
   $('inviteCodeDisplay').textContent=currentClan.invite_code;
   if(resetLabel){resetLabel.style.display='block';resetLabel.textContent=getNextSundayLabel();}
 
-  const {data:members}=await dbSelect('clan_members',`clan_id=eq.${currentClan.id}`,'user_id');
-  if(!members||!members.length)return;
-  const ids=members.map(m=>m.user_id).join(',');
-  const {data:profiles}=await dbSelect('profiles',`id=in.(${ids})&order=momentum.desc`,'id,username,momentum,streak,volt_score');
-  if(!profiles||!profiles.length)return;
+  // Show a loading indicator while we fetch
+  list.innerHTML='<div style="text-align:center;color:#3a5a7a;font-size:12px;padding:20px 0;">Loading…</div>';
 
-  // Load nudges and avatars in parallel before touching the DOM
+  // Fetch clan members
+  const {data:members, error:membersErr}=await dbSelect('clan_members',`clan_id=eq.${currentClan.id}`,'user_id');
+
+  if(membersErr||!members||!members.length){
+    // Fallback: show just the current user
+    list.innerHTML='<div class="empty-state" style="padding:16px 0;">Share the invite code to get your clan on the board.</div>';
+    return;
+  }
+
+  // Fetch profiles — build id list, single-item lists work fine with in.(id)
+  const userIds=members.map(m=>m.user_id);
+  const idsParam=userIds.join(',');
+  const {data:rawProfiles, error:profilesErr}=await dbSelect(
+    'profiles',
+    `id=in.(${idsParam})&order=momentum.desc`,
+    'id,username,momentum,streak,volt_score'
+  );
+
+  // Even if the query partially fails, build what we have
+  // Always ensure the current user appears (use local state as fallback)
+  let profiles = rawProfiles && rawProfiles.length ? rawProfiles : [];
+
+  // If current user is missing from results (new account, profile not yet synced), inject them
+  const selfInList = profiles.some(p=>p.id===currentUser.id);
+  if(!selfInList && profile){
+    profiles = [{
+      id: currentUser.id,
+      username: profile.username || '?',
+      momentum: momentum,
+      streak: mass,
+      volt_score: voltScore
+    }, ...profiles];
+    // Re-sort by momentum
+    profiles.sort((a,b)=>b.momentum-a.momentum);
+  }
+
+  if(!profiles.length){
+    list.innerHTML='<div class="empty-state" style="padding:16px 0;">Share the invite code to get your clan on the board.</div>';
+    return;
+  }
+
+  // Load nudges and avatars in parallel — don't let avatar failures block the list
   const [nudges, avatarUrls] = await Promise.all([
-    loadNudges(),
-    Promise.all(profiles.map(p => getAvatarUrl(p.id)))
+    loadNudges().catch(()=>[]),
+    Promise.all(profiles.map(p=>getAvatarUrl(p.id).catch(()=>null)))
   ]);
 
-  // Build avatar map keyed by profile id
   const avatarMap={};
-  profiles.forEach((p,i)=>{avatarMap[p.id]=avatarUrls[i];});
+  profiles.forEach((p,i)=>{avatarMap[p.id]=avatarUrls[i]||null;});
 
-  // Clear list only once all data is ready
-  const list=$('leaderboardList');list.innerHTML='';
+  // Render — clear loading placeholder
+  list.innerHTML='';
 
   // Nudge banner
   if(nudges.length>0){
@@ -1894,21 +1940,24 @@ async function loadLeaderboard() {
       list.before(nudgeBar);
     }
     nudgeBar.innerHTML=`<span>Someone nudged you — get back on track</span><button onclick="markNudgesSeen();this.parentElement.remove();" style="background:none;border:none;color:var(--ash);cursor:pointer;font-size:18px;flex-shrink:0;">×</button>`;
-    await markNudgesSeen();
+    markNudgesSeen().catch(()=>{});
   }
 
-  // My weekly momentum (real); for others show a rough visible indicator
   const myWeeklyM=getWeeklyMomentum();
 
   profiles.forEach((p,i)=>{
     const isYou=p.id===currentUser.id;
-    const weeklyM=isYou?myWeeklyM:Math.round(p.momentum*0.15*10)/10;
-    const rankClass=i===0?'gold':i===1?'silver':i===2?'bronze':'';
+    // Use live local values for current user so the display is always fresh
+    const displayMomentum = isYou ? momentum : (p.momentum||0);
+    const displayStreak   = isYou ? mass     : (p.streak||0);
+    const weeklyM         = isYou ? myWeeklyM : Math.round((p.momentum||0)*0.15*10)/10;
+    const rankClass       = i===0?'gold':i===1?'silver':i===2?'bronze':'';
 
     const avatarUrl=avatarMap[p.id];
+    const initial=(p.username||'?')[0].toUpperCase();
     const avatarHtml=avatarUrl
-      ?`<img src="${avatarUrl}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--line);flex-shrink:0;">`
-      :`<div style="width:36px;height:36px;border-radius:50%;background:var(--surface-lit);border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:var(--ember);flex-shrink:0;">${(p.username||'?')[0].toUpperCase()}</div>`;
+      ?`<img src="${avatarUrl}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--line);flex-shrink:0;" onerror="this.style.display='none'">`
+      :`<div style="width:36px;height:36px;border-radius:50%;background:var(--surface-lit);border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:var(--ember);flex-shrink:0;">${initial}</div>`;
 
     const nudgeBtn=!isYou
       ?`<button data-nudge="${p.id}" onclick="sendNudge('${p.id}')" style="background:transparent;border:1px solid var(--line);color:#7aa8d8;font-family:'Space Grotesk',sans-serif;font-size:10px;padding:5px 10px;border-radius:8px;cursor:pointer;flex-shrink:0;letter-spacing:0.05em;">Nudge</button>`
@@ -1919,11 +1968,11 @@ async function loadLeaderboard() {
     row.style.flexWrap='wrap';
     row.innerHTML=`<div class="lb-rank ${rankClass}">${i+1}</div>
       ${avatarHtml}
-      <div class="lb-username">${esc(p.username)}${isYou?' <span style="font-size:10px;color:var(--ash)">(you)</span>':''}</div>
+      <div class="lb-username">${esc(p.username||'?')}${isYou?' <span style="font-size:10px;color:var(--ash)">(you)</span>':''}</div>
       <div class="lb-stats">
-        <div class="lb-momentum">${Math.round(p.momentum*10)/10}</div>
-        <div class="lb-streak">${p.streak} day streak</div>
-        <div style="font-size:9px;color:#3a6a9a;letter-spacing:0.06em;margin-top:2px;">+${weeklyM} this week</div>
+        <div class="lb-momentum">${fmtScore(displayMomentum)}</div>
+        <div class="lb-streak">${displayStreak} day streak</div>
+        <div style="font-size:9px;color:#3a6a9a;letter-spacing:0.06em;margin-top:2px;">+${fmtScore(weeklyM)} this week</div>
       </div>
       ${nudgeBtn}
       <div class="reaction-bar" data-reaction-bar="${p.id}" style="width:100%;padding-left:2px;margin-top:6px;padding-top:8px;border-top:1px solid var(--line);"></div>`;
@@ -2218,11 +2267,11 @@ function loadProfile() {
   loadProfileAvatar();
   $('profileUsername').textContent=profile.username;
   $('profileEmail').textContent=currentUser?.email??'';
-  $('profileMomentum').textContent=(Math.round(momentum*10)/10).toFixed(1);
+  $('profileMomentum').textContent=fmtScore(momentum);
   $('profileStreak').textContent=mass;
   // Volt Score — lives on profile tab
   const vsEl=$('profileVoltScore');
-  if(vsEl)vsEl.textContent=(Math.round(voltScore*10)/10).toFixed(1);
+  if(vsEl)vsEl.textContent=fmtScore(voltScore);
   // Show when they can next change username
   const lastChange=localStorage.getItem('username_changed');
   const btn=$('changeUsernameBtn');
