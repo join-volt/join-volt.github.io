@@ -149,13 +149,7 @@
   .week-tab{padding:7px 14px;background:transparent;border:none;color:var(--ash);font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:0.1em;cursor:pointer;transition:background 0.2s,color 0.2s;}
   .week-tab.active{background:var(--surface-lit);color:var(--text);}
   .week-reset{font-size:9px;color:#3a5a7a;letter-spacing:0.06em;}
-  /* ── Clan Reactions ── */
-  .reaction-bar{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
-  .reaction-btn{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:4px 10px;font-size:12px;cursor:pointer;transition:border-color 0.2s,background 0.2s;display:flex;align-items:center;gap:4px;font-family:'Space Grotesk',sans-serif;}
-  .reaction-btn:active{background:var(--surface-lit);border-color:var(--ember);}
-  .reaction-count{font-size:10px;color:var(--ash);}
-  .reaction-btn.reacted{border-color:var(--ember);background:var(--surface-lit);}
-  .reaction-btn.reacted .reaction-count{color:var(--ember-soft);}
+  /* ── Clan Reactions removed ── */
   /* float */
   .float{position:fixed;font-family:'Sora',sans-serif;font-weight:900;pointer-events:none;z-index:999;transition:left 0.7s cubic-bezier(.5,0,.2,1),top 0.7s cubic-bezier(.5,0,.2,1),opacity 0.7s ease,transform 0.7s ease;}
   .float-gain{font-size:32px;color:var(--ember);text-shadow:0 0 18px rgba(59,130,246,0.8);}
@@ -1750,22 +1744,32 @@ async function loadClan() {
   currentClan = clans&&clans[0] ? clans[0] : null;
 }
 
-async function sendNudge(toUserId) {
+async function sendNudge(toUserId, btnEl) {
+  if(btnEl){ btnEl.textContent='Sending…'; btnEl.disabled=true; }
   const {error} = await dbInsert('nudges',{
     from_user_id: currentUser.id,
     to_user_id: toUserId,
     clan_id: currentClan.id,
     seen: false
   });
-  if (error) { alert('Could not send nudge'); return; }
-  // visual feedback
-  const btn = document.querySelector(`[data-nudge="${toUserId}"]`);
-  if (btn) { btn.textContent = 'Sent'; btn.disabled = true; btn.style.opacity = '0.5'; }
+  if(error){
+    if(btnEl){ btnEl.textContent='Nudge'; btnEl.disabled=false; }
+    return;
+  }
+  if(btnEl){ btnEl.textContent='Sent ✓'; btnEl.style.opacity='0.5'; }
 }
 
 async function loadNudges() {
   const {data} = await dbSelect('nudges', `to_user_id=eq.${currentUser.id}&seen=eq.false`, 'id,from_user_id,created_at');
-  return data || [];
+  if (!data || !data.length) return [];
+  // Resolve sender usernames
+  const senderIds = [...new Set(data.map(n => n.from_user_id))];
+  const senderProfiles = await Promise.all(
+    senderIds.map(id => dbSelect('profiles', `id=eq.${id}`, 'id,username').then(r => r.data?.[0] || null).catch(() => null))
+  );
+  const senderMap = {};
+  senderProfiles.forEach(p => { if (p) senderMap[p.id] = p.username; });
+  return data.map(n => ({ ...n, from_username: senderMap[n.from_user_id] || null }));
 }
 
 async function markNudgesSeen() {
@@ -1807,49 +1811,6 @@ function addWeeklyMomentum(amount) {
   localStorage.setItem(key, Math.round((cur + amount) * 10) / 10 + '');
 }
 
-// Reactions: stored in localStorage as { userId_emoji: count, userId_emoji_me: bool }
-function getReactions(profileId) {
-  const EMOJIS = ['🔥','⚡','💪','👑'];
-  return EMOJIS.map(emoji => {
-    const key = `reaction_${profileId}_${emoji}`;
-    const meKey = `reaction_${profileId}_${emoji}_me`;
-    return {
-      emoji,
-      count: parseInt(localStorage.getItem(key) || '0'),
-      reacted: localStorage.getItem(meKey) === '1'
-    };
-  });
-}
-
-function toggleReaction(profileId, emoji) {
-  const key = `reaction_${profileId}_${emoji}`;
-  const meKey = `reaction_${profileId}_${emoji}_me`;
-  const cur = parseInt(localStorage.getItem(key) || '0');
-  const reacted = localStorage.getItem(meKey) === '1';
-  if (reacted) {
-    localStorage.setItem(key, Math.max(0, cur - 1).toString());
-    localStorage.removeItem(meKey);
-  } else {
-    localStorage.setItem(key, (cur + 1).toString());
-    localStorage.setItem(meKey, '1');
-  }
-  // Re-render just the reactions for this row
-  const bar = document.querySelector(`[data-reaction-bar="${profileId}"]`);
-  if (bar) renderReactionBar(bar, profileId);
-}
-
-function renderReactionBar(bar, profileId) {
-  const reactions = getReactions(profileId);
-  bar.innerHTML = '';
-  reactions.forEach(r => {
-    const btn = document.createElement('button');
-    btn.className = 'reaction-btn' + (r.reacted ? ' reacted' : '');
-    btn.innerHTML = `${r.emoji}${r.count > 0 ? `<span class="reaction-count">${r.count}</span>` : ''}`;
-    btn.addEventListener('click', e => { e.stopPropagation(); toggleReaction(profileId, r.emoji); });
-    bar.appendChild(btn);
-  });
-}
-
 async function loadLeaderboard() {
   await loadClan();
   const noClan=$('noClanMsg'),clanAct=$('clanActions'),clanMgmt=$('clanMgmt');
@@ -1866,7 +1827,6 @@ async function loadLeaderboard() {
     return;
   }
 
-  // Clan exists — show management, hide join/create forms
   noClan.style.display='none';
   clanAct.style.display='none';
   clanMgmt.style.display='block';
@@ -1874,64 +1834,70 @@ async function loadLeaderboard() {
   $('inviteCodeDisplay').textContent=currentClan.invite_code;
   if(resetLabel){resetLabel.style.display='block';resetLabel.textContent=getNextSundayLabel();}
 
-  // Show a loading indicator while we fetch
   list.innerHTML='<div style="text-align:center;color:#3a5a7a;font-size:12px;padding:20px 0;">Loading…</div>';
 
-  // Fetch clan members
-  const {data:members, error:membersErr}=await dbSelect('clan_members',`clan_id=eq.${currentClan.id}`,'user_id');
-
+  // Fetch member IDs
+  const {data:members,error:membersErr}=await dbSelect('clan_members',`clan_id=eq.${currentClan.id}`,'user_id');
   if(membersErr||!members||!members.length){
-    // Fallback: show just the current user
     list.innerHTML='<div class="empty-state" style="padding:16px 0;">Share the invite code to get your clan on the board.</div>';
     return;
   }
 
-  // Fetch profiles — build id list, single-item lists work fine with in.(id)
   const userIds=members.map(m=>m.user_id);
-  const idsParam=userIds.join(',');
-  const {data:rawProfiles, error:profilesErr}=await dbSelect(
-    'profiles',
-    `id=in.(${idsParam})&order=momentum.desc`,
-    'id,username,momentum,streak,volt_score'
+
+  // Fetch each profile individually — avoids RLS issues with bulk in.() queries
+  // Each user can always read their own row; admins/service roles read all.
+  // Individual fetches work regardless of RLS policy.
+  const profileResults = await Promise.all(
+    userIds.map(uid =>
+      dbSelect('profiles', `id=eq.${uid}`, 'id,username,momentum,streak,volt_score')
+        .then(r => r.data?.[0] || null)
+        .catch(() => null)
+    )
   );
 
-  // Even if the query partially fails, build what we have
-  // Always ensure the current user appears (use local state as fallback)
-  let profiles = rawProfiles && rawProfiles.length ? rawProfiles : [];
-
-  // If current user is missing from results (new account, profile not yet synced), inject them
+  // Build profile list — always inject current user from local state
+  let profiles = profileResults.filter(Boolean);
   const selfInList = profiles.some(p=>p.id===currentUser.id);
   if(!selfInList && profile){
-    profiles = [{
-      id: currentUser.id,
-      username: profile.username || '?',
-      momentum: momentum,
-      streak: mass,
-      volt_score: voltScore
-    }, ...profiles];
-    // Re-sort by momentum
-    profiles.sort((a,b)=>b.momentum-a.momentum);
+    profiles.push({
+      id:currentUser.id,
+      username:profile.username||'?',
+      momentum,
+      streak:mass,
+      volt_score:voltScore
+    });
   }
+  // Update current user's row with fresh local values
+  profiles=profiles.map(p=>p.id===currentUser.id
+    ? {...p, momentum, streak:mass, volt_score:voltScore}
+    : p
+  );
+  // Sort by momentum descending
+  profiles.sort((a,b)=>(b.momentum||0)-(a.momentum||0));
 
   if(!profiles.length){
     list.innerHTML='<div class="empty-state" style="padding:16px 0;">Share the invite code to get your clan on the board.</div>';
     return;
   }
 
-  // Load nudges and avatars in parallel — don't let avatar failures block the list
-  const [nudges, avatarUrls] = await Promise.all([
+  // Load nudges and avatars in parallel
+  const [nudges, avatarUrls]=await Promise.all([
     loadNudges().catch(()=>[]),
     Promise.all(profiles.map(p=>getAvatarUrl(p.id).catch(()=>null)))
   ]);
-
   const avatarMap={};
   profiles.forEach((p,i)=>{avatarMap[p.id]=avatarUrls[i]||null;});
 
-  // Render — clear loading placeholder
   list.innerHTML='';
 
-  // Nudge banner
+  // Nudge banner — show who nudged
   if(nudges.length>0){
+    // Collect unique sender names
+    const names=[...new Set(nudges.map(n=>n.from_username).filter(Boolean))];
+    const nameStr=names.length>0
+      ? names.join(' & ') + ' nudged you'
+      : 'Someone nudged you';
     let nudgeBar=$('nudgeBar');
     if(!nudgeBar){
       nudgeBar=document.createElement('div');
@@ -1939,7 +1905,7 @@ async function loadLeaderboard() {
       nudgeBar.style.cssText='background:var(--surface-lit);border:1px solid var(--ember);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--ember-soft);display:flex;align-items:center;justify-content:space-between;gap:12px;';
       list.before(nudgeBar);
     }
-    nudgeBar.innerHTML=`<span>Someone nudged you — get back on track</span><button onclick="markNudgesSeen();this.parentElement.remove();" style="background:none;border:none;color:var(--ash);cursor:pointer;font-size:18px;flex-shrink:0;">×</button>`;
+    nudgeBar.innerHTML=`<span>⚡ ${esc(nameStr)} — get back on track</span><button onclick="markNudgesSeen();this.parentElement.remove();" style="background:none;border:none;color:var(--ash);cursor:pointer;font-size:18px;flex-shrink:0;">×</button>`;
     markNudgesSeen().catch(()=>{});
   }
 
@@ -1947,11 +1913,10 @@ async function loadLeaderboard() {
 
   profiles.forEach((p,i)=>{
     const isYou=p.id===currentUser.id;
-    // Use live local values for current user so the display is always fresh
-    const displayMomentum = isYou ? momentum : (p.momentum||0);
-    const displayStreak   = isYou ? mass     : (p.streak||0);
-    const weeklyM         = isYou ? myWeeklyM : Math.round((p.momentum||0)*0.15*10)/10;
-    const rankClass       = i===0?'gold':i===1?'silver':i===2?'bronze':'';
+    const displayMomentum=isYou?momentum:(p.momentum||0);
+    const displayStreak=isYou?mass:(p.streak||0);
+    const weeklyM=isYou?myWeeklyM:Math.round((p.momentum||0)*0.15*10)/10;
+    const rankClass=i===0?'gold':i===1?'silver':i===2?'bronze':'';
 
     const avatarUrl=avatarMap[p.id];
     const initial=(p.username||'?')[0].toUpperCase();
@@ -1960,12 +1925,11 @@ async function loadLeaderboard() {
       :`<div style="width:36px;height:36px;border-radius:50%;background:var(--surface-lit);border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:var(--ember);flex-shrink:0;">${initial}</div>`;
 
     const nudgeBtn=!isYou
-      ?`<button data-nudge="${p.id}" onclick="sendNudge('${p.id}')" style="background:transparent;border:1px solid var(--line);color:#7aa8d8;font-family:'Space Grotesk',sans-serif;font-size:10px;padding:5px 10px;border-radius:8px;cursor:pointer;flex-shrink:0;letter-spacing:0.05em;">Nudge</button>`
+      ?`<button data-nudge="${p.id}" style="background:transparent;border:1px solid var(--line);color:#7aa8d8;font-family:'Space Grotesk',sans-serif;font-size:10px;padding:5px 10px;border-radius:8px;cursor:pointer;flex-shrink:0;letter-spacing:0.05em;">Nudge</button>`
       :'';
 
     const row=document.createElement('div');
     row.className='lb-row'+(isYou?' lb-you':'');
-    row.style.flexWrap='wrap';
     row.innerHTML=`<div class="lb-rank ${rankClass}">${i+1}</div>
       ${avatarHtml}
       <div class="lb-username">${esc(p.username||'?')}${isYou?' <span style="font-size:10px;color:var(--ash)">(you)</span>':''}</div>
@@ -1974,11 +1938,14 @@ async function loadLeaderboard() {
         <div class="lb-streak">${displayStreak} day streak</div>
         <div style="font-size:9px;color:#3a6a9a;letter-spacing:0.06em;margin-top:2px;">+${fmtScore(weeklyM)} this week</div>
       </div>
-      ${nudgeBtn}
-      <div class="reaction-bar" data-reaction-bar="${p.id}" style="width:100%;padding-left:2px;margin-top:6px;padding-top:8px;border-top:1px solid var(--line);"></div>`;
+      ${nudgeBtn}`;
+    // Wire nudge button with JS (not inline onclick) to avoid closure issues
+    if(!isYou){
+      row.querySelector('[data-nudge]').addEventListener('click',function(){
+        sendNudge(p.id,this);
+      });
+    }
     list.appendChild(row);
-    const reactionBar=row.querySelector(`[data-reaction-bar="${p.id}"]`);
-    if(reactionBar)renderReactionBar(reactionBar,p.id);
   });
 }
 
