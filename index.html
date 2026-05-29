@@ -20,6 +20,31 @@
     --ash:#6a9abf;--text:#e8f4ff;--done:#22c55e;
     --warn:#f97316;--warn-surface:#1a0e06;--warn-line:#7c2d12;
   }
+  /* ── Light mode (Option C — Slate Blue) ── */
+  [data-theme="light"] {
+    --bg:#eef2f7;--surface:#ffffff;--surface-lit:#eff6ff;
+    --line:#dce6f0;--ember:#2563eb;--ember-soft:#3b82f6;
+    --ash:#5a7a9a;--text:#0a1628;--done:#16a34a;
+    --warn:#d97706;--warn-surface:#fffbeb;--warn-line:#fbbf24;
+  }
+  /* smooth theme transitions — every colour-bearing property */
+  *, *::before, *::after {
+    transition:
+      background-color 0.45s ease,
+      border-color 0.45s ease,
+      color 0.45s ease,
+      box-shadow 0.45s ease,
+      opacity 0.45s ease;
+  }
+  /* exclude transitions that would look janky */
+  .momentum, .tabs-track, .glow,
+  input, button, .float,
+  [class*="breathe"], [class*="state-"] {
+    transition:none;
+  }
+  /* re-add specific transitions for momentum number and glow that we want */
+  .momentum{transition:transform 0.45s cubic-bezier(.34,1.56,.64,1),color 0.5s ease,text-shadow 1.4s ease;}
+  .glow{transition:opacity 1.1s ease,background 1.4s ease;}
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{height:100%;}
   body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;display:flex;justify-content:center;overflow-x:hidden;}
@@ -265,6 +290,32 @@
   .goals-locked-overlay {
     pointer-events:none;opacity:0.45;
   }
+  /* ── Theme toggle ── */
+  .theme-toggle-wrap {
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;padding:14px 16px;margin-bottom:14px;
+  }
+  .theme-toggle-label { font-size:12px; color:var(--ash); letter-spacing:0.06em; }
+  .theme-toggle-icons { display:flex; align-items:center; gap:10px; }
+  .theme-icon { font-size:16px; line-height:1; transition:opacity 0.3s ease; }
+  .theme-icon.dim { opacity:0.3; }
+  .toggle-track {
+    width:48px; height:26px; border-radius:13px;
+    background:var(--line); border:1px solid var(--line);
+    position:relative; cursor:pointer;
+    transition:background 0.45s ease !important;
+    flex-shrink:0;
+  }
+  [data-theme="light"] .toggle-track { background:var(--ember); border-color:var(--ember); }
+  .toggle-thumb {
+    width:20px; height:20px; border-radius:50%;
+    background:var(--text);
+    position:absolute; top:2px; left:2px;
+    transition:transform 0.35s cubic-bezier(.4,0,.2,1), background 0.45s ease !important;
+    box-shadow:0 1px 4px rgba(0,0,0,0.25);
+  }
+  [data-theme="light"] .toggle-thumb { transform:translateX(22px); }
   /* pull-to-refresh */
   #pullIndicator{
     position:fixed;top:0;left:50%;transform:translateX(-50%) translateY(-60px);
@@ -665,6 +716,17 @@
         <div class="err" id="usernameChangeErr" style="margin-top:8px;"></div>
       </div>
       <button class="danger-btn" onclick="signOut()">Sign out</button>
+      <!-- Theme toggle -->
+      <div class="theme-toggle-wrap">
+        <span class="theme-toggle-label">Appearance</span>
+        <div class="theme-toggle-icons">
+          <span class="theme-icon" id="moonIcon">🌙</span>
+          <div class="toggle-track" id="themeToggleTrack" onclick="toggleTheme()">
+            <div class="toggle-thumb" id="themeToggleThumb"></div>
+          </div>
+          <span class="theme-icon" id="sunIcon">☀️</span>
+        </div>
+      </div>
       <button class="secondary-btn" onclick="initOnboarding()" style="margin-top:0">View rules</button>
     </div>
   </div>
@@ -2295,9 +2357,15 @@ function loadProfile() {
   $('profileEmail').textContent=currentUser?.email??'';
   $('profileMomentum').textContent=fmtScore(momentum);
   $('profileStreak').textContent=mass;
-  // Volt Score — lives on profile tab
   const vsEl=$('profileVoltScore');
   if(vsEl)vsEl.textContent=fmtScore(voltScore);
+  // Sync theme toggle icons
+  const saved = localStorage.getItem('volt_theme') || 'dark';
+  const moon = $('moonIcon'); const sun = $('sunIcon');
+  if (moon && sun) {
+    moon.classList.toggle('dim', saved === 'light');
+    sun.classList.toggle('dim', saved === 'dark');
+  }
   // Show when they can next change username
   const lastChange=localStorage.getItem('username_changed');
   const btn=$('changeUsernameBtn');
@@ -2619,6 +2687,37 @@ function finishOnboarding() {
       arrow.textContent = '↓';
     }
   }, { passive: true });
+})();
+
+// ═══════════════════════════════════════
+//  THEME
+// ═══════════════════════════════════════
+function applyTheme(mode) {
+  // mode: 'dark' | 'light'
+  if (mode === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  // Update icon opacity
+  const moon = $('moonIcon');
+  const sun  = $('sunIcon');
+  if (moon && sun) {
+    moon.classList.toggle('dim', mode === 'light');
+    sun.classList.toggle('dim', mode === 'dark');
+  }
+  localStorage.setItem('volt_theme', mode);
+}
+
+function toggleTheme() {
+  const current = localStorage.getItem('volt_theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+// Apply saved theme immediately on load (before boot) to avoid flash
+(function() {
+  const saved = localStorage.getItem('volt_theme') || 'dark';
+  if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
 })();
 
 // Boot
