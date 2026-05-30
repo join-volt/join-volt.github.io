@@ -153,6 +153,8 @@
   .add-save{background:var(--ember);color:#0c0a07;border-color:var(--ember);font-weight:700;}
   .add-cancel{background:transparent;color:var(--ash);}
   .day-btn{width:100%;background:transparent;border:1px dashed var(--line);color:#7aa8d8;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:0.15em;text-transform:uppercase;padding:13px;border-radius:12px;cursor:pointer;transition:border-color 0.2s,color 0.2s;margin-top:8px;}
+  .undo-day-btn{display:none;width:100%;background:transparent;border:1px dashed #3a5a7a;color:#3a5a7a;font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:0.15em;text-transform:uppercase;padding:11px;border-radius:12px;cursor:pointer;margin-top:6px;transition:border-color 0.2s,color 0.2s;}
+  .undo-day-btn:hover{border-color:var(--warn);color:var(--warn);}
   .note{font-size:9px;color:#7aa8d8;margin-top:12px;line-height:1.6;text-align:center;}
   /* drain countdown */
   .drain-countdown{text-align:center;font-size:10px;color:#3a6a9a;margin-bottom:6px;min-height:14px;letter-spacing:0.04em;}
@@ -203,7 +205,11 @@
   .nudge-btn{background:transparent;border:1px solid var(--line);color:#7aa8d8;font-family:'Space Grotesk',sans-serif;font-size:10px;padding:6px 12px;border-radius:8px;cursor:pointer;flex-shrink:0;letter-spacing:0.06em;transition:border-color 0.2s,color 0.2s;}
   .nudge-btn:hover{border-color:var(--ember-soft);color:var(--ember-soft);}
   .nudge-btn:disabled{opacity:0.45;cursor:default;}
-  /* float */
+  #authScreen, #setupScreen, #resetPasswordScreen {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 22px 40px;
+  }
   .float{position:fixed;font-family:'Sora',sans-serif;font-weight:900;pointer-events:none;z-index:999;transition:left 0.7s cubic-bezier(.5,0,.2,1),top 0.7s cubic-bezier(.5,0,.2,1),opacity 0.7s ease,transform 0.7s ease;}
   .float-gain{font-size:32px;color:var(--ember);text-shadow:0 0 18px rgba(59,130,246,0.8);}
   .float-drain{font-size:24px;color:var(--warn);}
@@ -1177,16 +1183,14 @@ function applyOfflineDrain() {
   const goalsCompletedThatDay = GOALS.some(g => g.done && g.name);
   for (let d = 0; d < days; d++) {
     if (d === 0 && goalsCompletedThatDay) {
-      // Goals were done on last recorded day — count as completed
       mass++;
       missStreak = 0;
     } else {
       missStreak++;
       if (missStreak >= 2) {
-        // Recovery window missed — flat -10 hit and streak resets
         momentum = Math.max(0, Math.round((momentum - 10) * 10) / 10);
         mass = 0;
-        missStreak = 0; // reset so each subsequent day only costs -10 once per cycle
+        missStreak = 1; // keep at 1 so next missed day is still a "second miss" — correct penalty cycle
       }
     }
   }
@@ -1354,7 +1358,7 @@ function renderMainChart() {
     entries.push({ d: ds, m: found ? found.m : null });
   }
   // Always show today's current value
-  entries[W - 1].m = Math.round(momentum);
+  entries[W - 1].m = Math.round(momentum * 10) / 10;
 
   const vals = entries.map(e => e.m ?? 0);
   const dataVals = entries.filter(e => e.m !== null).map(e => e.m);
@@ -1555,7 +1559,7 @@ async function loadGoals() {
       if (d&&d[0]) GOALS[i].db_id = d[0].id;
     }
   } else {
-    GOALS = data.map((g,i)=>({name:g.name,done:g.done,locked:i<3,db_id:g.id,position:g.position}));
+    GOALS = data.map((g,i)=>({name:g.name||'',done:g.done||false,locked:g.locked ?? i<3,db_id:g.id,position:g.position??i}));
     while (GOALS.length<3) {
       const pos=GOALS.length;
       const {data:d}=await dbInsert('goals',{user_id:currentUser.id,name:'',done:false,locked:true,position:pos});
@@ -1584,7 +1588,7 @@ async function loadGoals() {
 }
 
 async function saveGoalsDone() {
-  await Promise.all(GOALS.filter(g=>g.db_id).map(g=>dbUpdate('goals',`id=eq.${g.db_id}`,{done:g.done,name:g.name})));
+  await Promise.all(GOALS.filter(g=>g.db_id).map(g=>dbUpdate('goals',`id=eq.${g.db_id}`,{done:g.done})));
 }
 
 async function saveProfile() {
@@ -1901,9 +1905,9 @@ async function endDay() {
     setTimeout(() => { btn.textContent = orig; btn.style.borderColor = ''; btn.style.color = ''; }, 2500);
     return;
   }
-  const did = GOALS.filter(g=>g.done && g.name).length > 0;
-  const goalsHitCount = GOALS.filter(g=>g.done && g.name).length;
+  const goalsHitCount  = GOALS.filter(g=>g.done && g.name).length;
   const goalsTotalCount = GOALS.filter(g=>g.name).length;
+  const did = goalsHitCount > 0;
   // Save state for undo
   localStorage.setItem('day_ended_had_goals', did ? 'true' : 'false');
   localStorage.setItem('day_ended_prev_miss', missStreak.toString());
@@ -1941,20 +1945,17 @@ async function endDay() {
 
 async function undoEndDay() {
   if (localStorage.getItem('day_ended') !== dateStr()) return;
-  // Reverse the momentum/streak changes from endDay
   const did = localStorage.getItem('day_ended_had_goals') === 'true';
+  const prevMiss     = parseInt(localStorage.getItem('day_ended_prev_miss')     || '0');
+  const prevMomentum = parseFloat(localStorage.getItem('day_ended_prev_momentum') || momentum);
+  const prevStreak   = parseInt(localStorage.getItem('day_ended_prev_streak')   || mass);
   if (did) {
-    mass = Math.max(0, mass - 1);
-    missStreak = parseInt(localStorage.getItem('day_ended_prev_miss') || '0');
+    mass = Math.max(0, prevStreak);
+    missStreak = prevMiss;
   } else {
-    missStreak = parseInt(localStorage.getItem('day_ended_prev_miss') || '0');
-    if (missStreak >= 2) {
-      // restore drained momentum
-      const restoredMomentum = parseFloat(localStorage.getItem('day_ended_prev_momentum') || momentum);
-      momentum = restoredMomentum;
-      if (missStreak >= 2) mass = parseInt(localStorage.getItem('day_ended_prev_streak') || mass);
-    }
-    missStreak = parseInt(localStorage.getItem('day_ended_prev_miss') || '0');
+    momentum   = prevMomentum;
+    mass       = prevStreak;
+    missStreak = prevMiss;
   }
   // Restore goals done state
   const savedDone = JSON.parse(localStorage.getItem('day_ended_goals_done') || '[]');
@@ -2741,6 +2742,7 @@ function finishOnboarding() {
   let touchStartX = 0, touchStartY = 0, trackingSwipe = false;
 
   document.addEventListener('touchstart', e => {
+    if (dragState) return; // don't start swipe tracking during a goal drag
     if (!$('appScreen') || !$('appScreen').classList.contains('active')) return;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
@@ -2748,6 +2750,7 @@ function finishOnboarding() {
   }, { passive: true });
 
   document.addEventListener('touchmove', e => {
+    if (dragState) { trackingSwipe = false; return; }
     if (!trackingSwipe) return;
     const dx = e.touches[0].clientX - touchStartX;
     const dy = e.touches[0].clientY - touchStartY;
@@ -2787,6 +2790,7 @@ function finishOnboarding() {
   }
 
   document.addEventListener('touchstart', e => {
+    if (dragState) return; // don't interfere with goal drag
     if (!$('appScreen') || !$('appScreen').classList.contains('active')) return;
     if (!isAtTop()) return;
     startY = e.touches[0].clientY;
