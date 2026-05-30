@@ -2267,7 +2267,6 @@ async function loadLeaderboard() {
       <div class="lb-stats">
         <div class="lb-momentum">${fmtScore(dispMom)}</div>
         <div class="lb-streak">${dispStreak} day streak</div>
-        <div style="font-size:9px;color:#3a6a9a;letter-spacing:0.06em;margin-top:2px;">+${fmtScore(weeklyM)} this week</div>
       </div>
       ${actionBtn}
     `;
@@ -2338,11 +2337,11 @@ async function transferOwnership() {
   const select = $('transferSelect');
   const newOwnerId = select.value;
   const err = $('clanOwnerErr');
-  if(!newOwnerId){if(err)err.textContent='Select a member to transfer to.';return;}
-  if(!currentClan || currentClan.owner_id !== currentUser.id){if(err)err.textContent='Only the owner can transfer ownership.';return;}
+  if(!newOwnerId){if(err){err.style.color='#ff6b6b';err.textContent='Select a member to transfer to.';}return;}
+  if(!currentClan || currentClan.owner_id !== currentUser.id){if(err){err.style.color='#ff6b6b';err.textContent='Only the owner can transfer ownership.';}return;}
   if(!confirm('Transfer ownership? You will become a regular member.'))return;
   const {error} = await dbUpdate('clans',`id=eq.${currentClan.id}`,{owner_id:newOwnerId});
-  if(error){if(err)err.textContent=error.message||'Error';return;}
+  if(error){if(err){err.style.color='#ff6b6b';err.textContent=error.message||'Error';}return;}
   currentClan.owner_id = newOwnerId;
   if(err){err.style.color='var(--done)';err.textContent='Ownership transferred ✓';setTimeout(()=>{err.textContent='';err.style.color='';},2000);}
   await loadLeaderboard();
@@ -2350,10 +2349,10 @@ async function transferOwnership() {
 
 async function kickMember(userId, username) {
   const err = $('clanOwnerErr');
-  if(!currentClan || currentClan.owner_id !== currentUser.id){if(err)err.textContent='Only the owner can kick members.';return;}
+  if(!currentClan || currentClan.owner_id !== currentUser.id){if(err){err.style.color='#ff6b6b';err.textContent='Only the owner can kick members.';}return;}
   if(!confirm(`Kick ${username} from the clan?`))return;
   const {error} = await dbDelete('clan_members',`clan_id=eq.${currentClan.id}&user_id=eq.${userId}`);
-  if(error){if(err)err.textContent=error.message||'Error';return;}
+  if(error){if(err){err.style.color='#ff6b6b';err.textContent=error.message||'Error';}return;}
   await loadLeaderboard();
 }
 
