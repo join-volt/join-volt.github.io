@@ -212,7 +212,15 @@
   .week-tab.active{background:var(--surface-lit);color:var(--text);}
   .week-reset{font-size:9px;color:#3a5a7a;letter-spacing:0.06em;}
   /* ── Clan Reactions removed ── */
-  /* ── Nudge button ── */
+  /* ── Clan owner ── */
+  .owner-badge{display:inline-block;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#ffcc00;background:rgba(255,204,0,0.1);border:1px solid rgba(255,204,0,0.3);border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle;}
+  .kick-btn{background:transparent;border:1px solid #662222;color:#cc4444;font-family:'Space Grotesk',sans-serif;font-size:10px;padding:5px 10px;border-radius:8px;cursor:pointer;flex-shrink:0;letter-spacing:0.05em;transition:border-color 0.2s,color 0.2s;}
+  .kick-btn:hover{border-color:#ef4444;color:#ef4444;}
+  .owner-panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:16px;}
+  .owner-panel-title{font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:#7aa8d8;margin-bottom:12px;}
+  .owner-input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:13px;margin-bottom:8px;}
+  .owner-input:focus{outline:none;border-color:var(--ember);}
+  .owner-row{display:flex;gap:8px;}
   .nudge-btn{background:transparent;border:1px solid var(--line);color:#7aa8d8;font-family:'Space Grotesk',sans-serif;font-size:10px;padding:6px 12px;border-radius:8px;cursor:pointer;flex-shrink:0;letter-spacing:0.06em;transition:border-color 0.2s,color 0.2s;}
   .nudge-btn:hover{border-color:var(--ember-soft);color:var(--ember-soft);}
   .nudge-btn:disabled{opacity:0.45;cursor:default;}
@@ -717,7 +725,30 @@
     <div id="clanMgmt" style="display:none;margin-top:16px">
       <div class="clan-label">Invite code — share this with friends</div>
       <div class="code-box"><div class="code-text" id="inviteCodeDisplay">——</div><button class="copy-btn" onclick="copyInviteCode()">Copy</button></div>
-      <button class="danger-btn" onclick="leaveClan()">Leave clan</button>
+      <!-- Owner-only management panel -->
+      <div id="ownerPanel" style="display:none;">
+        <!-- Rename clan -->
+        <div class="owner-panel">
+          <div class="owner-panel-title">Rename clan</div>
+          <input class="owner-input" id="renameClanInput" type="text" maxlength="30" placeholder="New clan name…">
+          <button class="primary-btn" style="margin-top:0;padding:11px;" onclick="renameClan()">Save name</button>
+        </div>
+        <!-- Transfer ownership -->
+        <div class="owner-panel" style="margin-top:10px;">
+          <div class="owner-panel-title">Transfer ownership</div>
+          <select class="owner-input" id="transferSelect" style="cursor:pointer;">
+            <option value="">Select a member…</option>
+          </select>
+          <button class="secondary-btn" style="margin-top:0;padding:11px;" onclick="transferOwnership()">Transfer →</button>
+        </div>
+        <!-- Delete clan -->
+        <div class="owner-panel" style="margin-top:10px;">
+          <div class="owner-panel-title">Danger zone</div>
+          <button class="danger-btn" style="margin-bottom:0;" onclick="deleteClan()">Delete clan</button>
+        </div>
+      </div>
+      <div class="err" id="clanOwnerErr" style="margin-top:8px;"></div>
+      <button class="danger-btn" style="margin-top:12px;" onclick="leaveClan()">Leave clan</button>
     </div>
     <div class="err" id="clanErr"></div>
   </div>
@@ -2086,6 +2117,11 @@ async function loadLeaderboard() {
   $('inviteCodeDisplay').textContent=currentClan.invite_code;
   if(resetLabel){resetLabel.style.display='block';resetLabel.textContent=getNextSundayLabel();}
 
+  // Show/hide owner panel
+  const isOwner = currentClan.owner_id === currentUser.id;
+  const ownerPanel = $('ownerPanel');
+  if(ownerPanel) ownerPanel.style.display = isOwner ? 'block' : 'none';
+
   list.innerHTML='<div style="text-align:center;color:#3a5a7a;font-size:12px;padding:20px 0;">Loading…</div>';
 
   // Step 1: get member IDs
@@ -2178,8 +2214,21 @@ async function loadLeaderboard() {
 
   const myWeeklyM=getWeeklyMomentum();
 
+  // Populate transfer ownership dropdown
+  const transferSelect = $('transferSelect');
+  if(transferSelect && isOwner){
+    transferSelect.innerHTML='<option value="">Select a member…</option>';
+    profiles.forEach(p=>{
+      if(p.id===currentUser.id)return;
+      const opt=document.createElement('option');
+      opt.value=p.id;opt.textContent=p.username||'?';
+      transferSelect.appendChild(opt);
+    });
+  }
+
   profiles.forEach((p,i)=>{
     const isYou       = p.id===currentUser.id;
+    const isMemberOwner = p.id === currentClan.owner_id;
     const dispMom     = isYou ? momentum        : (p.momentum||0);
     const dispStreak  = isYou ? mass            : (p.streak||0);
     const weeklyM     = isYou ? myWeeklyM       : Math.round((p.momentum||0)*0.15*10)/10;
@@ -2191,26 +2240,42 @@ async function loadLeaderboard() {
       ? `<img src="${avatarUrl}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid var(--line);flex-shrink:0;" onerror="this.style.display='none'">`
       : `<div style="width:38px;height:38px;border-radius:50%;background:var(--surface-lit);border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:var(--ember);flex-shrink:0;">${initial}</div>`;
 
+    // Owner badge shown on owner's row
+    const ownerBadge = isMemberOwner ? '<span class="owner-badge">👑 Owner</span>' : '';
+
+    // Action button — kick (if current user is owner and this isn't the owner) or nudge
+    let actionBtn = '';
+    if(!isYou){
+      if(isOwner && !isMemberOwner){
+        actionBtn = `<button class="kick-btn" data-kick="${p.id}">Kick</button>`;
+      } else if(!isOwner){
+        actionBtn = `<button class="nudge-btn" data-uid="${p.id}">Nudge ⚡</button>`;
+      } else {
+        // current user is owner viewing their own row — no button
+        actionBtn = '';
+      }
+    }
+
     const row = document.createElement('div');
     row.className = 'lb-row'+(isYou?' lb-you':'');
     row.innerHTML = `
       <div class="lb-rank ${rankClass}">${i+1}</div>
       ${avatarHtml}
-      <div class="lb-username">
-        ${esc(p.username||'?')}
-        ${isYou?'<span style="font-size:10px;color:var(--ash);margin-left:4px;">(you)</span>':''}
+      <div class="lb-username" style="display:flex;flex-direction:column;gap:3px;">
+        <div>${esc(p.username||'?')}${isYou?'<span style="font-size:10px;color:var(--ash);margin-left:4px;">(you)</span>':''}${ownerBadge}</div>
       </div>
       <div class="lb-stats">
         <div class="lb-momentum">${fmtScore(dispMom)}</div>
         <div class="lb-streak">${dispStreak} day streak</div>
         <div style="font-size:9px;color:#3a6a9a;letter-spacing:0.06em;margin-top:2px;">+${fmtScore(weeklyM)} this week</div>
       </div>
-      ${!isYou ? `<button class="nudge-btn" data-uid="${p.id}">Nudge ⚡</button>` : ''}
+      ${actionBtn}
     `;
     if(!isYou){
-      row.querySelector('.nudge-btn').addEventListener('click', function(){
-        sendNudge(p.id, this);
-      });
+      const nudgeBtn = row.querySelector('.nudge-btn');
+      if(nudgeBtn) nudgeBtn.addEventListener('click', function(){ sendNudge(p.id, this); });
+      const kickBtn = row.querySelector('.kick-btn');
+      if(kickBtn) kickBtn.addEventListener('click', function(){ kickMember(p.id, p.username||'?'); });
     }
     list.appendChild(row);
   });
@@ -2220,7 +2285,7 @@ async function createClan() {
   const name=$('clanNameInput').value.trim();if(!name)return;
   $('clanErr').textContent='';
   const code=genCode();
-  const {data,error}=await dbInsert('clans',{name,invite_code:code,created_by:currentUser.id});
+  const {data,error}=await dbInsert('clans',{name,invite_code:code,created_by:currentUser.id,owner_id:currentUser.id});
   if(error){$('clanErr').textContent=error.message||'Error';return;}
   const clan=data[0];
   await dbInsert('clan_members',{clan_id:clan.id,user_id:currentUser.id});
@@ -2244,11 +2309,65 @@ async function joinClan() {
 }
 
 async function leaveClan() {
-  if(!currentClan||!confirm('Leave this clan?'))return;
+  if(!currentClan)return;
+  const isOwner = currentClan.owner_id === currentUser.id;
+  if(isOwner){
+    const ownerErr=$('clanOwnerErr');
+    if(ownerErr){ownerErr.textContent='Transfer ownership before leaving the clan.';setTimeout(()=>{ownerErr.textContent='';},3000);}
+    return;
+  }
+  if(!confirm('Leave this clan?'))return;
   await dbDelete('clan_members',`clan_id=eq.${currentClan.id}&user_id=eq.${currentUser.id}`);
   currentClan=null;await loadLeaderboard();
 }
 
+async function renameClan() {
+  const newName = $('renameClanInput').value.trim();
+  const err = $('clanOwnerErr');
+  if(!newName){if(err)err.textContent='Enter a clan name.';return;}
+  if(!currentClan || currentClan.owner_id !== currentUser.id){if(err)err.textContent='Only the owner can rename the clan.';return;}
+  const {error} = await dbUpdate('clans',`id=eq.${currentClan.id}`,{name:newName});
+  if(error){if(err)err.textContent=error.message||'Error';return;}
+  currentClan.name = newName;
+  $('clanName').textContent = newName;
+  $('renameClanInput').value = '';
+  if(err){err.style.color='var(--done)';err.textContent='Clan renamed ✓';setTimeout(()=>{err.textContent='';err.style.color='';},2000);}
+}
+
+async function transferOwnership() {
+  const select = $('transferSelect');
+  const newOwnerId = select.value;
+  const err = $('clanOwnerErr');
+  if(!newOwnerId){if(err)err.textContent='Select a member to transfer to.';return;}
+  if(!currentClan || currentClan.owner_id !== currentUser.id){if(err)err.textContent='Only the owner can transfer ownership.';return;}
+  if(!confirm('Transfer ownership? You will become a regular member.'))return;
+  const {error} = await dbUpdate('clans',`id=eq.${currentClan.id}`,{owner_id:newOwnerId});
+  if(error){if(err)err.textContent=error.message||'Error';return;}
+  currentClan.owner_id = newOwnerId;
+  if(err){err.style.color='var(--done)';err.textContent='Ownership transferred ✓';setTimeout(()=>{err.textContent='';err.style.color='';},2000);}
+  await loadLeaderboard();
+}
+
+async function kickMember(userId, username) {
+  const err = $('clanOwnerErr');
+  if(!currentClan || currentClan.owner_id !== currentUser.id){if(err)err.textContent='Only the owner can kick members.';return;}
+  if(!confirm(`Kick ${username} from the clan?`))return;
+  const {error} = await dbDelete('clan_members',`clan_id=eq.${currentClan.id}&user_id=eq.${userId}`);
+  if(error){if(err)err.textContent=error.message||'Error';return;}
+  await loadLeaderboard();
+}
+
+async function deleteClan() {
+  const err = $('clanOwnerErr');
+  if(!currentClan || currentClan.owner_id !== currentUser.id){if(err)err.textContent='Only the owner can delete the clan.';return;}
+  if(!confirm('Delete this clan permanently? All members will be removed. This cannot be undone.'))return;
+  // Remove all members first
+  await dbDelete('clan_members',`clan_id=eq.${currentClan.id}`);
+  // Delete the clan
+  await dbDelete('clans',`id=eq.${currentClan.id}`);
+  currentClan=null;
+  await loadLeaderboard();
+}
 function copyInviteCode() {
   if(!currentClan)return;
   navigator.clipboard.writeText(currentClan.invite_code).then(()=>{
